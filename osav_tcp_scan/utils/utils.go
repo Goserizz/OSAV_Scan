@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"net"
 	"strings"
 )
 
@@ -93,4 +94,23 @@ func IsBogon(dec_ip uint64) bool {
       ((dec_ip & 0xFFFFFF00) == 0xCB007100) || // 203.0.113.0/24
       ((dec_ip & 0xF0000000) == 0xE0000000) || // 224.0.0.0/4
       ((dec_ip & 0xF0000000) == 0xF0000000) { return true } else {return false}   // 240.0.0.0/4
+}
+
+func GetIface(interfaceName string) ([]string, []byte, error) {
+
+    iface, err := net.InterfaceByName(interfaceName)
+    if err != nil { return nil, nil, err }
+
+	var ipv4Addrs []string
+
+    addrs, err := iface.Addrs()
+    if err != nil { return nil, nil, err }
+
+    for _, addr := range addrs {
+        ipnet, ok := addr.(*net.IPNet)
+        if !ok { continue }
+        if ipv4 := ipnet.IP.To4(); ipv4 != nil { ipv4Addrs = append(ipv4Addrs, ipv4.String()) }
+    }
+
+    return ipv4Addrs, iface.HardwareAddr, nil
 }
