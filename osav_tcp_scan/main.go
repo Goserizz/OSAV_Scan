@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	ifaceName = flag.String("iface", "eth0", "The interface used for scanning.")
-	dstMacStr = flag.String("dmac", "", "The mac address of router.")
-	pps       = flag.Uint64("rate", 250000, "PPS used for scanning")
+	ifaceName 	= flag.String("iface", "eth0", "The interface used for scanning.")
+	dstMacStr 	= flag.String("dmac", "", "The mac address of router.")
+	pps	   		= flag.Uint64("rate", 250000, "PPS used for scanning.")
+	localPort   = flag.Uint("locport", 37301, "Local port used for scanning.")
 )
 
 const (
@@ -39,7 +40,7 @@ func TCPScan(remotePort uint16) {
 	dstMac, err := net.ParseMAC(*dstMacStr)
 	if err != nil { panic(fmt.Sprintf("%s, %s\n", *dstMacStr, err)) }
 
-	p := NewTCPoolv4(remotePort, 100000, *ifaceName, srcIpStr, srcMac, dstMac)
+	p := NewTCPoolv4(remotePort, 100000, uint16(*localPort), *ifaceName, srcIpStr, srcMac, dstMac)
 	limiter := rate.NewLimiter(rate.Limit(*pps), 1000)
 	ipDec := uint64(1)
 	n_diff := 0
@@ -51,10 +52,10 @@ func TCPScan(remotePort uint16) {
 		for i := uint64(0); i < PRIME; i ++ {
 			ipDec = (ipDec * 3) % PRIME
 			if ipDec >= IPNUM ||  utils.IsBogon(ipDec) { continue }
-            if (i + 1) % *pps == 0 { 
-                bar.Add(int(*pps))
-                bar.Describe(fmt.Sprintf("%d waiting, %d(%.2f%%) same, %d(%d approx) diff", p.LenInChan(), n_same, float64(n_same) / float64(n_sent) * 100, n_diff, int(float64(n_diff) / float64(i) * float64(PRIME))))
-            }
+			if (i + 1) % *pps == 0 { 
+				bar.Add(int(*pps))
+				bar.Describe(fmt.Sprintf("%d waiting, %d(%.2f%%) same, %d(%d approx) diff", p.LenInChan(), n_same, float64(n_same) / float64(n_sent) * 100, n_diff, int(float64(n_diff) / float64(i) * float64(PRIME))))
+			}
 			n_sent ++
 			dstIpBin := make([]byte, 4)
 			binary.BigEndian.PutUint32(dstIpBin, uint32(ipDec))
