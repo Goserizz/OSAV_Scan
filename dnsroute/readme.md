@@ -1,13 +1,13 @@
 # DNSRoute
 
 # 简介
-DNSRoute使用Traceroute的方法，探测DNS报文到目标IP的。与Traceroute不同的是，如果目标IP是一个透明转发服务器，DNSRoute可以探测到目标IP到透明转发目的IP的路径，为透明转发场景提供详细的信息以供分析。
+DNSRoute使用Traceroute的方法，使用DNS报文探测到目标IP的IP路径。与Traceroute不同的是，如果目标IP是一个透明转发服务器，DNSRoute可以探测到目标IP到透明转发目的IP的路径，为透明转发场景提供详细的信息以供分析。
 
 ## Build
 ```shell
 go build -o dnsroute
 ```
-因为监听所有ICMP报文需要root权限，如果想在用户权限下运行dnsroute，需要先提升dnsroute的网络权限
+因为监听所有ICMP报文需要root权限，如果想在用户权限下运行`dnsroute`，需要先提升`dnsroute`的网络权限
 ```shell
 sudo setcap cap_net_raw+ep dnsroute
 ```
@@ -21,6 +21,7 @@ dnsroute [-eips] <target_ip>
     -p <Local Port> (default 16657)
     -s <Start TTL>  (default 1)
 ```
+注意本地端口需要是开放端口，否则无法接收改了目的地址的ICMP包和最终（源地址与DNS请求目的地址不一致的）DNS回复报文。在下面的例子中，如果不开放本地端口，从`TTL = 17`开始将无法收到响应。
 
 ## Example
 ```
@@ -51,3 +52,4 @@ dnsroute [-eips] <target_ip>
 2024/01/04 10:42:54 TTL = 23
 2024/01/04 10:42:55 TTL = 24, RTT = 582 ms: Receive DNS response from 1.1.1.1:53
 ```
+其中`icmp-ip-dst`指ICMP报文中的IP目的地址，反映该DNS请求的目的地址是否被修改。
