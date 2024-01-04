@@ -39,6 +39,34 @@ func FormatIpv4(ipv4 string) string {
 	return strings.Join(formatParts, ".")
 }
 
+func SplitIPv6Str(ipStr string) []string{
+	if ipStr[len(ipStr) - 1] == ':' {
+		ipStr = ipStr[:len(ipStr) - 1]
+	}
+	ipSeg := strings.Split(ipStr, ":")
+	var ipFullSeg []string
+	for i := 0; i < len(ipSeg); i++ {
+		seg := ipSeg[i]
+		if seg == "" {
+			nIgnore := 9 - len(ipSeg)
+			for j := 0; j < nIgnore; j++ {
+				ipFullSeg = append(ipFullSeg, "0000")
+			}
+			continue
+		}
+		nZero := 4 - len(seg)
+		for i := 0; i < nZero; i++ {
+			seg = "0" + seg
+		}
+		ipFullSeg = append(ipFullSeg, seg)
+	}
+	return ipFullSeg
+}
+
+func FormatIpv6(ipStr string) string {
+	return strings.Join(SplitIPv6Str(ipStr), ":")
+}
+
 func DeformatIpv4(ipv4 string) string {
 	var deformatParts []string
 	for _, part := range strings.Split(ipv4, ".") {
@@ -138,20 +166,25 @@ func GetDefaultRouteInterface() (string, error) {
     return "", errors.New("default route not found")
 }
 
-func GetIface(interfaceName string) ([]string, []byte, error) {
+func GetIface(interfaceName string) ([]string, []string, []byte, error) {
     iface, err := net.InterfaceByName(interfaceName)
-    if err != nil { return nil, nil, err }
+    if err != nil { return nil, nil, nil, err }
 
 	var ipv4Addrs []string
+	var ipv6Addrs []string
 
     addrs, err := iface.Addrs()
-    if err != nil { return nil, nil, err }
+    if err != nil { return nil, nil, nil, err }
 
     for _, addr := range addrs {
         ipnet, ok := addr.(*net.IPNet)
         if !ok { continue }
-        if ipv4 := ipnet.IP.To4(); ipv4 != nil { ipv4Addrs = append(ipv4Addrs, ipv4.String()) }
+        if ipv4 := ipnet.IP.To4(); ipv4 != nil { 
+			ipv4Addrs = append(ipv4Addrs, ipv4.String()) 
+		} else if ipv6 := ipnet.IP.To16(); ipv6 != nil { 
+			ipv6Addrs = append(ipv6Addrs, ipv6.String()) 
+		}
     }
 
-    return ipv4Addrs, iface.HardwareAddr, nil
+    return ipv4Addrs, ipv6Addrs, iface.HardwareAddr, nil
 }

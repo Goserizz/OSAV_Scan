@@ -2,8 +2,9 @@ package main
 
 import (
 	"log"
-	"net"
 	"flag"
+	"net"
+	"strings"
 )
 
 var (
@@ -25,11 +26,15 @@ func main() {
 		*iface, err = GetDefaultRouteInterface()
 		if err != nil { panic("Please Specify the Interface for DNSRoute.") }
 	}
-	srcIpArr, _, err := GetIface(*iface)
+	srcIpv4Arr, srcIpv6Arr, _, err := GetIface(*iface)
 	if err != nil { panic(err) }
-	srcIpStr := srcIpArr[0]
 	dstIpStr := args[0]
 
-	log.Printf("Using interface %s: %s#%d to DNSRoute %s#%d with TTL from %d to %d", *iface, srcIpStr, *localPort, dstIpStr, 53, *startTTL, *endTTL)
-	DNSRouteTestUser(srcIpStr, uint16(*localPort), dstIpStr, *startTTL, *endTTL)
+	if strings.Contains(dstIpStr, ".") {
+		log.Printf("Using interface %s: %s#%d to DNSRoute %s#%d with TTL from %d to %d", *iface, srcIpv4Arr[0], *localPort, dstIpStr, 53, *startTTL, *endTTL)
+		DNSRouteTestUser(srcIpv4Arr[0], uint16(*localPort), dstIpStr, *startTTL, *endTTL)
+	} else {
+		log.Printf("Using interface %s: %s#%d to DNSRoute %s#%d with TTL from %d to %d", *iface, srcIpv6Arr[0], *localPort, dstIpStr, 53, *startTTL, *endTTL)
+		DNSRouteTestUserv6(srcIpv6Arr[0], uint16(*localPort), FormatIpv6(dstIpStr), *startTTL, *endTTL)
+	}
 }
