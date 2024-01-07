@@ -4,12 +4,9 @@ import (
 	"os"
 	"fmt"
 	"net"
-	"log"
 	"time"
 	"flag"
 	"context"
-	"strings"
-	"strconv"
 	"math/rand"
 
 	"osav_dns_scan_v6/utils"
@@ -20,8 +17,7 @@ import (
 
 const (
 	BURST = 1000
-	UPDATE_INTV = 10000
-	SCAN_PFX_LEN = 60
+	UPDATE_INTV = 100000
 )
 
 var (
@@ -32,13 +28,15 @@ var (
 	inputFile   = flag.String("i", "", "Input file for scanning.")
 	diffFile    = flag.String("d", "", "Output file for diff.")
 	sameFile    = flag.String("s", "", "Output file for same.")
+	scanPfxLen  = flag.Int("l", 48, "Scan to which length of prefixes.")
 )
 
 func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMac, dstMac []byte) {
 	sendFinish := false
 	dnsPool := NewDNSPool(100000, srcIpStr, ifaceName, srcMac, dstMac, uint16(*localPort))
 	var pfxBitsArr []utils.BitsArray
-	var pfxBitsInd []int
+	pfxBitsInd := make(map[int]int)
+	// var pfxBitsInd []int
 	limiter := rate.NewLimiter(rate.Limit(*pps), BURST)
 
 	lines := utils.ReadLineAddr6FromFS(inputFile)
@@ -47,42 +45,50 @@ func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMa
 		lines[i], lines[j] = lines[j], lines[i]
 	}
 	totProbes := int64(0)
+	nTotal := 0
 	for _, pfxStr := range(lines) {
-		pfxLen, err := strconv.Atoi(strings.Split(pfxStr, "/")[1])
-		if err != nil {log.Fatalln(err)}
-		if pfxLen >= SCAN_PFX_LEN { totProbes += 1 } else { totProbes += 1 << (SCAN_PFX_LEN - pfxLen) }
 		_, pfx, _ := net.ParseCIDR(pfxStr)
 		for _, pfxBits := range utils.Pfx2Bits(pfx) {
+			if pfxBits.PrefixLen() >= uint8(*scanPfxLen) { totProbes += 1 } else { totProbes += 1 << (uint8(*scanPfxLen) - pfxBits.PrefixLen()) }
 			pfxBitsArr = append(pfxBitsArr, pfxBits)
-			pfxBitsInd = append(pfxBitsInd, 0)
+			// pfxBitsInd = append(pfxBitsInd, 0)
+			pfxBitsInd[nTotal] = 0
+			nTotal += 1
 		}
 	}
 	bar := progressbar.Default(totProbes, "Scanning...")
 
 	go func() {
 		finished := false
+		// nRemain := len(pfxBitsArr)
 		counter := 0
+		nowPfxLen := uint8(0)
 		for !finished {
 			finished = true
-			for i := range(pfxBitsArr) {
+			var delArr []int
+			// for i := range(pfxBitsArr) {
+			for i, ind := range pfxBitsInd {
 				pfxBits := pfxBitsArr[i]
-				ind := pfxBitsInd[i]
+				// ind := pfxBitsInd[i]
 				maxInd := 1
-				if pfxBits.PrefixLen() < SCAN_PFX_LEN { maxInd = 1 << (SCAN_PFX_LEN - pfxBits.PrefixLen()) }
-				if ind == maxInd { continue } else { finished = false }
+				if pfxBits.PrefixLen() < uint8(*scanPfxLen) { maxInd = 1 << (uint8(*scanPfxLen) - pfxBits.PrefixLen()) }
+				if ind == maxInd { 
+					delArr = append(delArr, i)
+					nowPfxLen = pfxBits.PrefixLen() - 1
+					continue 
+				} else { finished = false }
 				if maxInd == 1 {
 					nowIpBits := pfxBits.Copy()
 					nowIpBits.RandFill()
 					limiter.Wait(context.TODO())
 					dnsPool.Add(nowIpBits.ToIPv6())
 				} else {
-					genLen := SCAN_PFX_LEN - pfxBits.PrefixLen()
+					genLen := uint8(*scanPfxLen) - pfxBits.PrefixLen()
 					nowIpBits := pfxBits.Copy()
 					for jnd := uint8(0); jnd < genLen / 4; jnd ++ {
 						nowBits := (ind >> (4 * jnd)) & 0xf
 						nowIpBits.Append(byte(nowBits))
 					}
-					// nowIpBits = nowIpBits.FillZero64()
 					nowIpBits.RandFill()
 					limiter.Wait(context.TODO())
 					dnsPool.Add(nowIpBits.ToIPv6())
@@ -90,11 +96,14 @@ func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMa
 				pfxBitsInd[i] = ind + 1
 				counter ++
 				if counter % UPDATE_INTV == 0 {
-					bar.Describe(fmt.Sprintf("Inchan: %d...", dnsPool.LenInChan()))
+					bar.Describe(fmt.Sprintf("Inchan: %d..., %d/%d (/%d) scanning", dnsPool.LenInChan(), len(pfxBitsInd), nTotal, nowPfxLen))
 					bar.Add(UPDATE_INTV)
 				}
 			}
-
+			for _, i := range delArr { delete(pfxBitsInd, i) }
+			newPfxBitsInd := make(map[int]int)
+			for k, v := range pfxBitsInd { newPfxBitsInd[k] = v}
+			pfxBitsInd = newPfxBitsInd
 		}
 		sendFinish = true
 	}()

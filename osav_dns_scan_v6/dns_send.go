@@ -138,7 +138,6 @@ func (p *DNSPool) send() {
 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(28)) // 类型，AAAA为28
 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // 类，Internet为1
 	dnsQry := dnsQryBuf.Bytes()
-	log.Println(len(dnsQry))
 
 	// pre calculate checksum
 	udpCks := uint32(0)
@@ -215,7 +214,7 @@ func (p *DNSPool) recv() {
 
 		dnsPacket := buf[8:]
 		question, _ := utils.ParseDNSQuestion(dnsPacket, 12)
-		if len(question.Name) == 0 { continue }
+		if len(question.Name) < RAND_LEN + FORMAT_IPV6_LEN + 1 { continue }
 		p.outOrgChan <- question.Name[RAND_LEN + 1:][:FORMAT_IPV6_LEN]
 		p.outRealChan <- remoteIpStr
 	}
