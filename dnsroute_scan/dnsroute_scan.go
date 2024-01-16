@@ -19,17 +19,12 @@ import (
 )
 
 const (
-	TRANSACTION_ID uint16 = 666
-	IPV4_TTL_DOMAIN_LEN = 43
-	FORMAT_IPV4_LEN = 15
 	REMOTE_PORT uint16 = 53
-	RAND_LEN = 5
-	QRY_DOMAIN = "v4.ruiruitest.com"
-	CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
-	IPV4_HDR_SIZE = 20
-	UDP_HDR_SIZE = 8
-	LOG_INTV = 10000
-	BURST = 1000
+	LOG_INTV = 100000
+	BURST = 10000
+	PRIME uint64 = 4294967311
+	IPNUM uint64 = 4294967296
+	N_TOT uint64 = 3970694159
 )
 
 func RandFillDomain(ipStr string) string {
@@ -150,28 +145,6 @@ func sendDNSv4(srcIpStr, dstIpStr string, ttl uint8) {
 	}
 }
 
-func FormatIpv4(ipv4 string) string {
-	var formatParts []string
-	for _, part := range strings.Split(ipv4, ".") {
-		for len(part) < 3 {
-			part = "0" + part
-		}
-		formatParts = append(formatParts, part)
-	}
-	return strings.Join(formatParts, ".")
-}
-
-func DeformatIpv4(ipv4 string) string {
-	var deformatParts []string
-	for _, part := range strings.Split(ipv4, ".") {
-		for part[0] == '0' && len(part) > 1 {
-			part = part[1:]
-		}
-		deformatParts = append(deformatParts, part)
-	}
-	return strings.Join(deformatParts, ".")
-}
-
 func DNSRouteScan(srcIpStr, inFile, outFile, natFile, dnsFile string, startTtl, endTtl uint8, localPort uint16, pps int) {
 	os.Remove(outFile)
 	os.Remove(natFile)
@@ -267,11 +240,11 @@ func DNSRouteScan(srcIpStr, inFile, outFile, natFile, dnsFile string, startTtl, 
 				continue
 			}
 			// log.Println(question.Name, len(question.Name))
-			QRY_DOMAIN := strings.Replace(question.Name, "\\", "", -1)
-			if len(QRY_DOMAIN) != IPV4_TTL_DOMAIN_LEN {
+			qryDomain := strings.Replace(question.Name, "\\", "", -1)
+			if len(qryDomain) != IPV4_TTL_DOMAIN_LEN {
 				continue
 			}
-			realIp := DeformatIpv4(QRY_DOMAIN[3:][:FORMAT_IPV4_LEN])
+			realIp := DeformatIpv4(qryDomain[3:][:FORMAT_IPV4_LEN])
 			if _, ok := testIps.Load(realIp); !ok { continue }
 			if _, ok := doneIps.Load(realIp); !ok { 
 				Append1Addr6ToFS(dnsFile, realIp + "," + remoteIpStr) 
@@ -298,4 +271,50 @@ func DNSRouteScan(srcIpStr, inFile, outFile, natFile, dnsFile string, startTtl, 
 
 	for !finished { time.Sleep(time.Second) }
 	time.Sleep(5 * time.Second)
+}
+
+func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsFile string, startTtl, endTtl uint8, pps int) {
+	os.Remove(outFile)
+	os.Remove(dnsFile)
+	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
+	for ttl := startTtl; ttl <= endTtl; ttl ++ {
+		finish := false
+		p := NewDNSPool(100000, srcIpStr, ifaceName, srcMac, dstMac, ttl)
+		go func() {
+			ipDec := uint64(1)
+			bar := progressbar.Default(int64(N_TOT), fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan()))
+			for i := uint64(0); i < PRIME; i ++ {
+				ipDec = (ipDec * 3) % PRIME
+				if ipDec >= IPNUM || IsBogon(ipDec) { continue }
+				if (i + 1) % LOG_INTV == 0 { bar.Add(LOG_INTV); bar.Describe(fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan())) }
+				dstIpBin := make([]byte, 4)
+				binary.BigEndian.PutUint32(dstIpBin, uint32(ipDec))
+				limiter.Wait(context.TODO())
+				p.Add(net.IP(dstIpBin).String())
+			}
+			finish = true
+		}()
+
+		go func() {
+			for {
+				targetIp, realIp := p.GetIcmp()
+				if targetIp == "" {
+					if finish { break }
+				} else if targetIp != realIp { Append1Addr6ToFS(outFile, targetIp + "," + realIp) }
+			}
+		}()
+
+		go func() {
+			for {
+				targetIp, realIp := p.GetDns()
+				if targetIp == "" {
+					if finish { break }
+				} else if targetIp != realIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp) }
+			}
+		}()
+
+		for !finish { time.Sleep(time.Second) }
+		time.Sleep(10 * time.Second)
+		p.Finish()
+	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"flag"
 )
 
@@ -13,7 +14,8 @@ var (
 	outputFile = flag.String("o", "", "Output file.")
 	natFile = flag.String("n", "", "Output file for SNAT.")
 	dnsFile = flag.String("d", "", "Output file for DNS response without transparent forwarding.")
-	pps = flag.Int("pps", 20000, "Sending rate PPS.")
+	pps = flag.Int("pps", 200000, "Sending rate PPS.")
+	dstMacStr = flag.String("dmac", "", "The mac address of router.")
 )
 
 func main() {
@@ -23,7 +25,11 @@ func main() {
 		*iface, err = GetDefaultRouteInterface()
 		if err != nil { panic("Please Specify the Interface for DNSRoute.") }
 	}
-	srcIpv4Arr, _, _, err := GetIface(*iface)
+	srcIpv4Arr, _, srcMac, err := GetIface(*iface)
 	if err != nil { panic(err) }
-	DNSRouteScan(srcIpv4Arr[0], *inputFile, *outputFile, *natFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), uint16(*localPort), *pps)
+	srcIpStr := srcIpv4Arr[0]
+	dstMac, err := net.ParseMAC(*dstMacStr)
+	if err != nil { panic(err) }
+	
+	DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps)
 }
