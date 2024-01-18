@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"fmt"
 	"net"
 	"time"
@@ -43,6 +42,7 @@ type DNSPool struct {
 	inIpChan          chan string
 	outIcmpTargetChan chan string
 	outIcmpRealChan   chan string
+	outIcmpResChan    chan string
 	outDnsTargetChan  chan string
 	outDnsRealChan    chan string
 	srcIpStr          string
@@ -59,6 +59,7 @@ func NewDNSPool(bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac [
 		inIpChan: make(chan string, bufSize),
 		outIcmpTargetChan: make(chan string, bufSize),
 		outIcmpRealChan: make(chan string, bufSize),
+		outIcmpResChan: make(chan string, bufSize),
 		outDnsTargetChan: make(chan string, bufSize),
 		outDnsRealChan: make(chan string, bufSize),
 		srcIpStr: srcIpStr,
@@ -78,12 +79,12 @@ func (p *DNSPool) Add(dstIpStr string) {
 	p.inIpChan <- dstIpStr
 }
 
-func (p *DNSPool) GetIcmp() (string, string) {
+func (p *DNSPool) GetIcmp() (string, string, string) {
 	select {
 		case targetIp := <- p.outIcmpTargetChan:
-			return targetIp, <- p.outIcmpRealChan
+			return targetIp, <- p.outIcmpRealChan, <- p.outIcmpResChan
 		case <-time.After(time.Second):
-			return "", ""
+			return "", "", ""
 	}
 }
 
@@ -235,7 +236,6 @@ func (p *DNSPool) send() {
 		// Send packet
 		for { if err = syscall.Sendto(fd, packet, 0, bindAddr); err == nil { break } }
 	}
-	log.Printf("TTL = %d, Sender Finished.", p.ttl)
 }
 
 func (p *DNSPool) recvDns() {
@@ -262,7 +262,8 @@ func (p *DNSPool) recvDns() {
 
 		// Resolve UDP header
 		// localPort := binary.BigEndian.Uint16(buf[22:24])
-		// remotePort := binary.BigEndian.Uint16(buf[20:22])
+		remotePort := binary.BigEndian.Uint16(buf[20:22])
+		if remotePort != REMOTE_PORT { continue }
 		txId := binary.BigEndian.Uint16(buf[28:30])
 		if txId != TRANSACTION_ID  { continue }
 
@@ -276,7 +277,6 @@ func (p *DNSPool) recvDns() {
 		p.outDnsTargetChan <- targetIp
 		p.outDnsRealChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 	}
-	log.Printf("TTL = %d, DNS Reciver Finished.", p.ttl)
 }
 
 func (p *DNSPool) recvIcmp() {
@@ -295,14 +295,14 @@ func (p *DNSPool) recvIcmp() {
 	// 接收ICMP报文
 	for {
 		buf := make([]byte, 1500)
-		_, _, err := syscall.Recvfrom(fd, buf, 0)
+		_, addr, err := syscall.Recvfrom(fd, buf, 0)
 		if err != nil { panic(err) }
 		if p.finish { break }
 		if binary.BigEndian.Uint16(buf[30:32]) != IPV4_LEN || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
 		p.outIcmpTargetChan <- net.IPv4(buf[32], buf[33], buf[48], buf[49]).String()
 		p.outIcmpRealChan <- net.IP(buf[44:48]).String()
+		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 	}
-	log.Printf("TTL = %d, ICMP Reciver Finished.", p.ttl)
 }
 
 func (p *DNSPool) Finish() {

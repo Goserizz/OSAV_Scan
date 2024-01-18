@@ -12,10 +12,11 @@ var (
 	endTTL = flag.Int("e", 40, "End TTL.")
 	inputFile = flag.String("i", "", "Input file for scanning.")
 	outputFile = flag.String("o", "", "Output file.")
-	natFile = flag.String("n", "", "Output file for SNAT.")
+	natFile = flag.String("nat", "", "Output file for SNAT.")
 	dnsFile = flag.String("d", "", "Output file for DNS response without transparent forwarding.")
 	pps = flag.Int("pps", 200000, "Sending rate PPS.")
 	dstMacStr = flag.String("dmac", "", "The mac address of router.")
+	nTot = flag.Uint64("n", 3970694159, "The number of ip addresses will be sent.")
 )
 
 func main() {
@@ -31,5 +32,10 @@ func main() {
 	dstMac, err := net.ParseMAC(*dstMacStr)
 	if err != nil { panic(err) }
 	
-	DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps)
+	if *inputFile != "" {
+		DNSRouteScan(srcIpStr, *iface, *inputFile, *outputFile, *natFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps, srcMac, dstMac)
+	} else {
+		DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps, *nTot)
+	}
+	
 }
