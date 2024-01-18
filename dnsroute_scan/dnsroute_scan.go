@@ -91,7 +91,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsFile string, startTtl, endTtl uint8, pps int, nTot uint64) {
 	os.Remove(outFile)
 	os.Remove(dnsFile)
-	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
+	// limiter := rate.NewLimiter(rate.Limit(pps), BURST)
 	for ttl := startTtl; ttl <= endTtl; ttl ++ {
 		finish := false
 		p := NewDNSPool(BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
@@ -105,7 +105,7 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsF
 				if (i + 1) % LOG_INTV == 0 { bar.Add(LOG_INTV); bar.Describe(fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan())) }
 				dstIpBin := make([]byte, 4)
 				binary.BigEndian.PutUint32(dstIpBin, uint32(ipDec))
-				limiter.Wait(context.TODO())
+				// limiter.Wait(context.TODO())
 				p.Add(net.IP(dstIpBin).String())
 				counter ++
 				if counter == nTot { break }

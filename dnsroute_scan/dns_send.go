@@ -69,7 +69,7 @@ func NewDNSPool(bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac [
 		ttl: ttl,
 		finish: false,
 	}
-	go dnsPool.send()
+	for i := 0; i < 1; i ++ { go dnsPool.send() }
 	go dnsPool.recvDns()
 	go dnsPool.recvIcmp()
 	return dnsPool
@@ -202,6 +202,8 @@ func (p *DNSPool) send() {
 			if p.finish { break OuterLoop } else { continue OuterLoop }
 		}
 		dstIp := net.ParseIP(dstIpStr).To4()
+		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
+		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
 
 		// Complete IPv4 Header
 		// copy(ipv4Hdr[4:6], dstIp[:2])
@@ -209,20 +211,20 @@ func (p *DNSPool) send() {
 		// ipv4Hdr[8] = nowTtl
 		// copy(ipv4Hdr[16:20], dstIp.To4())
 		copy(packet[30:34], dstIp)
-		ipv4NowCks := ipv4Cks + uint32(binary.BigEndian.Uint16(dstIp[:2]))
-		for i := 0; i < 4; i += 2 { ipv4NowCks += uint32(binary.BigEndian.Uint16(dstIp[i:i+2])) }
+		ipv4NowCks := ipv4Cks + dstIpHigh + dstIpHigh + dstIpLow
+		// for i := 0; i < 4; i += 2 { ipv4NowCks += uint32(binary.BigEndian.Uint16(dstIp[i:i+2])) }
 		// binary.BigEndian.PutUint16(ipv4Hdr[10:12], uint16(^(ipv4NowCks + (ipv4NowCks >> 16))))
 		binary.BigEndian.PutUint16(packet[24:26], uint16(^(ipv4NowCks + (ipv4NowCks >> 16))))
 
 		// Complete UDP Header
 		// copy(udpHdr[0:2], dstIp[2:4])
 		copy(packet[34:36], dstIp[2:4])
-		copy(dstIpStrBytes[1:], []byte(FormatIpv4(dstIpStr)))
-		udpNowCks := udpCks + uint32(binary.BigEndian.Uint16(dstIp[2:4]))
-		for i := 0; i < 4; i += 2 { udpNowCks += uint32(binary.BigEndian.Uint16(dstIp[i:i+2])) }
+		// copy(dstIpStrBytes[1:], []byte(FormatIpv4(dstIpStr)))
+		udpNowCks := udpCks + dstIpHigh + dstIpLow + dstIpLow
+		// for i := 0; i < 4; i += 2 { udpNowCks += uint32(binary.BigEndian.Uint16(dstIp[i:i+2])) }
 		for i := 0; i < len(dstIpStrBytes); i += 2 { udpNowCks += uint32(binary.BigEndian.Uint16(dstIpStrBytes[i:i+2])) }
 		// binary.BigEndian.PutUint16(udpHdr[6:8], uint16(^(udpNowCks + (udpNowCks >> 16))))
-		binary.BigEndian.PutUint16(packet[40:], uint16(^(udpNowCks + (udpNowCks >> 16))))
+		binary.BigEndian.PutUint16(packet[40:42], uint16(^(udpNowCks + (udpNowCks >> 16))))
 
 		// Complete DNS Query
 		// copy(dnsQry[2 + RAND_LEN:], dstIpStrBytes)
