@@ -22,7 +22,7 @@ const (
 	BUF_SIZE = 100000
 )
 
-func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string, startTtl, endTtl uint8, pps int, srcMac, dstMac []byte) {
+func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string, startTtl, endTtl uint8, nSender, pps int, srcMac, dstMac []byte) {
 	os.Remove(outFile)
 	os.Remove(natFile)
 	os.Remove(dnsFile)
@@ -37,7 +37,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 	}
 	counter := 0
 	for ttl := startTtl; ttl <= endTtl; ttl ++ {
-		p := NewDNSPool(BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
+		p := NewDNSPool(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
 		bar.Describe(fmt.Sprintf("Scanning TTL=%d...", ttl))
 		finish := false
 
@@ -88,13 +88,13 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 	}
 }
 
-func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsFile string, startTtl, endTtl uint8, pps int, nTot uint64) {
+func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsFile string, startTtl, endTtl uint8, pps, nSender int, nTot uint64) {
 	os.Remove(outFile)
 	os.Remove(dnsFile)
-	// limiter := rate.NewLimiter(rate.Limit(pps), BURST)
+	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
 	for ttl := startTtl; ttl <= endTtl; ttl ++ {
 		finish := false
-		p := NewDNSPool(BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
+		p := NewDNSPool(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
 		go func() {
 			ipDec := uint64(1)
 			counter := uint64(0)
@@ -105,7 +105,7 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsF
 				if (i + 1) % LOG_INTV == 0 { bar.Add(LOG_INTV); bar.Describe(fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan())) }
 				dstIpBin := make([]byte, 4)
 				binary.BigEndian.PutUint32(dstIpBin, uint32(ipDec))
-				// limiter.Wait(context.TODO())
+				limiter.Wait(context.TODO())
 				p.Add(net.IP(dstIpBin).String())
 				counter ++
 				if counter == nTot { break }
