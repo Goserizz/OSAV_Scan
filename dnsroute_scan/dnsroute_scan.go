@@ -19,7 +19,7 @@ const (
 	BURST = 10000
 	PRIME uint64 = 4294967311
 	IPNUM uint64 = 4294967296
-	BUF_SIZE = 10000
+	BUF_SIZE = 100000
 )
 
 func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string, startTtl, endTtl uint8, nSender, pps int, srcMac, dstMac []byte) {
