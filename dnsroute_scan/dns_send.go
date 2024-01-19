@@ -246,9 +246,7 @@ func (p *DNSPool) send() {
 func (p *DNSPool) recvDns() {
 	// Create IPv4 raw socket
 	sock, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
-	if err != nil {
-		panic(err)
-	}
+	if err != nil { panic(err) }
 	defer syscall.Close(sock)
 
 	laddr := &syscall.SockaddrInet4{ Port: int(p.localPort), }
@@ -287,9 +285,7 @@ func (p *DNSPool) recvDns() {
 func (p *DNSPool) recvIcmp() {
 	// 创建原始套接字
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
-	if err != nil {
-		panic(err)
-	}
+	if err != nil { panic(err) }
 	defer syscall.Close(fd)
 
 	// 绑定本地地址

@@ -16,7 +16,7 @@ import (
 const (
 	REMOTE_PORT uint16 = 53
 	LOG_INTV = 100000
-	BURST = 10000
+	BURST = 1000
 	PRIME uint64 = 4294967311
 	IPNUM uint64 = 4294967296
 	BUF_SIZE = 100000
@@ -110,6 +110,7 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsF
 				counter ++
 				if counter == nTot { break }
 			}
+			time.Sleep(10 * time.Second)
 			finish = true
 		}()
 
@@ -132,7 +133,6 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsF
 		}()
 
 		for !finish { time.Sleep(time.Second) }
-		time.Sleep(10 * time.Second)
 		p.Finish()
 	}
 }
