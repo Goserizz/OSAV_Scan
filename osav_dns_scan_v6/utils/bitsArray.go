@@ -39,6 +39,10 @@ func NilSlice() BitsArray {
 	return BitsArray{nil, 0}
 }
 
+func (ba *BitsArray) Bytes() []byte {
+	return ba.bytes
+}
+
 func (ba *BitsArray) Copy() BitsArray {
 	bytes := make([]byte, len(ba.bytes))
 	copy(bytes, ba.bytes)

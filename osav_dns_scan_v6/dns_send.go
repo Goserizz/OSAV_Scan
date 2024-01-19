@@ -17,13 +17,20 @@ const (
 	IPV6_HDR_SIZE = 40
 	UDP_HDR_SIZE = 8
 	DNS_HDR_SIZE = 12
-	DNS_QRY_SIZE = 72
-	QRY_DOMAIN = "v4.ruiruitest.online"
+	DNS_QRY_SIZE = 48
+	QRY_DOMAIN = "v6.ruiruitest.online"
 	TRANSACTION_ID uint16 = 6667
 	CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
-	RAND_LEN = 5  // must be odd
-	FORMAT_IPV6_LEN = 39
-	FORMAT_IPV6 = "0000:0000:0000:0000:0000:0000:0000:0000"
+	RAND_LEN = 4  // must be even
+	// FORMAT_IPV6_LEN = 39
+	FORMAT_IPV6_LEN = 16
+	// FORMAT_IPV6 = "0000:0000:0000:0000:0000:0000:0000:0000"
+	FORMAT_IPV6 = "0000000000000000"
+)
+
+var (
+	ALL_HDR_SIZE = MAC_HDR_SIZE + IPV6_HDR_SIZE + UDP_HDR_SIZE + DNS_HDR_SIZE
+	DOMAIN_LEN = RAND_LEN + 1 + FORMAT_IPV6_LEN + 1 + len(QRY_DOMAIN) + 1
 )
 
 func GetDomainRandPfx() string {
@@ -32,8 +39,16 @@ func GetDomainRandPfx() string {
 	return string(randSuffixBytes)
 }
 
+func GetRandIid() []byte {
+	var randIid []byte
+	for i := 0; i < 8; i ++ {
+		randIid = append(randIid, byte(rand.Intn(256)))
+	}
+	return randIid
+}
+
 type DNSPool struct {
-	inChan 	    chan string
+	inChan 	    chan []byte
 	outOrgChan  chan string
 	outRealChan chan string
 	srcIpStr    string
@@ -45,7 +60,7 @@ type DNSPool struct {
 
 func NewDNSPool(bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac []byte, localPort uint16) *DNSPool {
 	dnsPool := &DNSPool{
-		inChan: make(chan string, bufSize),
+		inChan: make(chan []byte, bufSize),
 		outOrgChan: make(chan string, bufSize),
 		outRealChan: make(chan string, bufSize),
 		srcIpStr: srcIpStr,
@@ -59,8 +74,8 @@ func NewDNSPool(bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac [
 	return dnsPool
 }
 
-func (p *DNSPool) Add(dstIpStr string) {
-	p.inChan <- dstIpStr
+func (p *DNSPool) Add(dstPfx []byte) {
+	p.inChan <- dstPfx
 }
 
 func (p *DNSPool) Get() (string, string) {
@@ -95,12 +110,14 @@ func (p *DNSPool) send() {
 	}
 
 	// Construct IPv6 Header
+	iid := GetRandIid()
 	ipv6Hdr := make([]byte, IPV6_HDR_SIZE)
 	ipv6Hdr[0] = 6 << 4  // version = 6
 	binary.BigEndian.PutUint16(ipv6Hdr[4:6], UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE)  // UDP size
 	ipv6Hdr[6] = 17  // next header = UDP
 	ipv6Hdr[7] = 255  // hop limit = 255
 	copy(ipv6Hdr[8:], srcIp.To16())  // src IPv6
+	copy(ipv6Hdr[32:], iid)
 
 	// UDP Header
 	udpHdrBuf := new(bytes.Buffer)
@@ -138,17 +155,19 @@ func (p *DNSPool) send() {
 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(28)) // 类型，AAAA为28
 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // 类，Internet为1
 	dnsQry := dnsQryBuf.Bytes()
+	copy(dnsQry[RAND_LEN + 10:], iid)
 
 	// pre calculate checksum
 	udpCks := uint32(0)
 	for i := 0; i < 16; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(srcIp[i:i+2])) }
+	for i := 0; i < 8; i += 2 {udpCks += uint32(binary.BigEndian.Uint16(iid[i:i+2]))}
 	udpCks += UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE  // UDP Length
 	udpCks += syscall.IPPROTO_UDP  // upper layer protocol: UDP
 	for i := 0; i < 6; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(udpHdr[i:i+2])) }
 	for i := 0; i < DNS_HDR_SIZE; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsHdr[i:i+2])) }
-	for i := 0; i < 1 + RAND_LEN; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsQry[i:i+2])) }
-	udpCks += FORMAT_IPV6_LEN << 8 + 50  // ASCII("2") = 50 
-	for i := 2 + RAND_LEN + FORMAT_IPV6_LEN; i < DNS_QRY_SIZE; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsQry[i:i+2])) }
+	for i := 0; i < 2 + RAND_LEN; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsQry[i:i+2])) }
+	// udpCks += FORMAT_IPV6_LEN << 8 + 50  // ASCII("2") = 50 
+	for i := 2 + RAND_LEN + 8; i < DNS_QRY_SIZE; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsQry[i:i+2])) }
 
 	// Combine IPv6 header, UDP header, DNS header, DNS query
 	packet := append(macHdr, ipv6Hdr...)
@@ -157,24 +176,23 @@ func (p *DNSPool) send() {
 	packet  = append(packet, dnsQry...)
 
 	for {
-		dstIpStr := <- p.inChan
-		dstIp := net.ParseIP(dstIpStr).To16()
+		dstPfx := <- p.inChan
 
 		// Complete IPv6 Header
 		// copy(ipv6Hdr[24:], dstIp.To16())  // dst IPv6
-		copy(packet[38:], dstIp)
+		copy(packet[38:], dstPfx)
 
 		// Complete DNS Header
-		dstIpStrBytes := []byte(dstIpStr)
+		// dstIpStrBytes := []byte(dstIpStr)
 		sum := udpCks
-		for i := 0; i < 16; i += 2 { sum += uint32(binary.BigEndian.Uint16(dstIp[i : i + 2])) }
-		for i := 1; i < FORMAT_IPV6_LEN; i += 2 { sum += uint32(binary.BigEndian.Uint16(dstIpStrBytes[i : i + 2])) }
+		for i := 0; i < 8; i += 2 { sum += (uint32(binary.BigEndian.Uint16(dstPfx[i : i + 2])) << 1) }
+		// for i := 1; i < FORMAT_IPV6_LEN; i += 2 { sum += uint32(binary.BigEndian.Uint16(dstIpStrBytes[i : i + 2])) }
 		// binary.BigEndian.PutUint16(dnsHdr[6:8], cks)
 		binary.BigEndian.PutUint16(packet[60:62], uint16(^(sum + (sum >> 16))))
 
 		// Complete UDP Header
 		// copy(dnsQry[2 + RAND_LEN:], dstIpStrBytes)
-		copy(packet[76 + RAND_LEN:], dstIpStrBytes)
+		copy(packet[ALL_HDR_SIZE + RAND_LEN + 2:], dstPfx)
 
 		// Send packet
 		for { if err = syscall.Sendto(fd, packet, 0, bindAddr); err == nil { break } }
@@ -214,8 +232,8 @@ func (p *DNSPool) recv() {
 
 		dnsPacket := buf[8:]
 		question, _ := utils.ParseDNSQuestion(dnsPacket, 12)
-		if len(question.Name) < RAND_LEN + FORMAT_IPV6_LEN + 1 { continue }
-		p.outOrgChan <- question.Name[RAND_LEN + 1:][:FORMAT_IPV6_LEN]
+		if len(question.Name) != DOMAIN_LEN { continue }
+		p.outOrgChan <- net.IP([]byte(question.Name[1 + RAND_LEN:][:FORMAT_IPV6_LEN])).String()
 		p.outRealChan <- remoteIpStr
 	}
 }

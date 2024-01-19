@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	BURST = 1000
+	BURST = 10000
 	UPDATE_INTV = 100000
 )
 
@@ -58,6 +58,7 @@ func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMa
 	}
 	bar := progressbar.Default(totProbes, "Scanning...")
 
+	scanPfxLenUint8 := uint8(*scanPfxLen)
 	go func() {
 		finished := false
 		// nRemain := len(pfxBitsArr)
@@ -71,27 +72,30 @@ func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMa
 				pfxBits := pfxBitsArr[i]
 				// ind := pfxBitsInd[i]
 				maxInd := 1
-				if pfxBits.PrefixLen() < uint8(*scanPfxLen) { maxInd = 1 << (uint8(*scanPfxLen) - pfxBits.PrefixLen()) }
+				pfxLen := pfxBits.PrefixLen()
+				if pfxLen < scanPfxLenUint8 { maxInd = 1 << (scanPfxLenUint8 - pfxLen) }
 				if ind == maxInd { 
 					delArr = append(delArr, i)
-					nowPfxLen = pfxBits.PrefixLen() - 1
+					nowPfxLen = pfxLen - 1
 					continue 
 				} else { finished = false }
 				if maxInd == 1 {
 					nowIpBits := pfxBits.Copy()
-					nowIpBits.RandFill()
+					// nowIpBits.RandFill()
+					if scanPfxLenUint8 < 64 {nowIpBits = nowIpBits.FillZero64()}
 					limiter.Wait(context.TODO())
-					dnsPool.Add(nowIpBits.ToIPv6())
+					dnsPool.Add(nowIpBits.Bytes())
 				} else {
-					genLen := uint8(*scanPfxLen) - pfxBits.PrefixLen()
+					genLen := scanPfxLenUint8 - pfxLen
 					nowIpBits := pfxBits.Copy()
 					for jnd := uint8(0); jnd < genLen / 4; jnd ++ {
 						nowBits := (ind >> (4 * jnd)) & 0xf
 						nowIpBits.Append(byte(nowBits))
 					}
-					nowIpBits.RandFill()
+					if scanPfxLenUint8 < 64 {nowIpBits = nowIpBits.FillZero64()}
+					// nowIpBits.RandFill()
 					limiter.Wait(context.TODO())
-					dnsPool.Add(nowIpBits.ToIPv6())
+					dnsPool.Add(nowIpBits.Bytes())
 				}
 				pfxBitsInd[i] = ind + 1
 				counter ++
@@ -117,7 +121,7 @@ func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMa
 		}
 	}()
 
-	dnsPool.Add("2001:4860:4860:0000:0000:0000:0000:8888")
+	// dnsPool.Add("2001:4860:4860:0000:0000:0000:0000:8888")
 
 	for !sendFinish {
 		time.Sleep(time.Second)
