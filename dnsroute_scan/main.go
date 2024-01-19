@@ -35,7 +35,7 @@ func main() {
 	if *inputFile != "" {
 		DNSRouteScan(srcIpStr, *iface, *inputFile, *outputFile, *natFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *nSend, *pps, srcMac, dstMac)
 	} else {
-		DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nTot)
+		DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nTot)
 	}
 	
 }

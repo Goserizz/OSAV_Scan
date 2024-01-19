@@ -37,7 +37,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 	}
 	counter := 0
 	for ttl := startTtl; ttl <= endTtl; ttl ++ {
-		p := NewDNSPool(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
+		p := NewDNSPoolSlow(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
 		bar.Describe(fmt.Sprintf("Scanning TTL=%d...", ttl))
 		finish := false
 
@@ -88,9 +88,8 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 	}
 }
 
-func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsFile string, startTtl, endTtl uint8, pps, nSender int, nTot uint64) {
+func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile string, startTtl, endTtl uint8, pps, nSender int, nTot uint64) {
 	os.Remove(outFile)
-	os.Remove(dnsFile)
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
 	for ttl := startTtl; ttl <= endTtl; ttl ++ {
 		finish := false
@@ -120,15 +119,6 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsF
 				if targetIp == "" {
 					if finish { break }
 				} else if targetIp != realIp { Append1Addr6ToFS(outFile, targetIp + "," + realIp + "," + resIp) }
-			}
-		}()
-
-		go func() {
-			for {
-				targetIp, realIp := p.GetDns()
-				if targetIp == "" {
-					if finish { break }
-				} else if targetIp != realIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp) }
 			}
 		}()
 

@@ -27,7 +27,7 @@ func TestAliveDNS(t *testing.T) {
 	if err != nil { log.Fatal(err) }
 	dstMac, err := net.ParseMAC("0c:81:26:30:b8:78")
 	if err != nil { log.Fatal(err) }
-	pool := NewDNSPool(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 255)
+	pool := NewDNSPoolSlow(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 255)
 	go func() { 
 		for {
 			targetIp, realIp := pool.GetDns()

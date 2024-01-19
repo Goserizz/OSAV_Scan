@@ -72,7 +72,6 @@ func NewDNSPool(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac,
 		nSender: nSender,
 	}
 	for i := 0; i < nSender; i ++ { go dnsPool.send() }
-	go dnsPool.recvDns()
 	go dnsPool.recvIcmp()
 	return dnsPool
 }
@@ -88,15 +87,6 @@ func (p *DNSPool) GetIcmp() (string, string, string) {
 		case <-time.After(time.Second):
 			return "", "", ""
 	}
-}
-
-func (p *DNSPool) GetDns() (string, string) {
-	select {
-	case targetIp := <- p.outDnsTargetChan:
-		return targetIp, <- p.outDnsRealChan
-	case <-time.After(time.Second):
-		return "", ""
-}
 }
 
 func (p *DNSPool) LenInChan() int {
@@ -207,44 +197,6 @@ func (p *DNSPool) send() {
 
 		// Send packet
 		for { if err = syscall.Sendto(fd, packet, 0, bindAddr); err == nil { break } }
-	}
-}
-
-func (p *DNSPool) recvDns() {
-	// Create IPv4 raw socket
-	sock, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
-	if err != nil { panic(err) }
-	defer syscall.Close(sock)
-
-	laddr := &syscall.SockaddrInet4{ Port: int(p.localPort), }
-	copy(laddr.Addr[:], net.ParseIP(p.srcIpStr))
-	err = syscall.Bind(sock, laddr)
-	if err != nil {
-		panic(err)
-	}
-
-	// Read packets
-	for {
-		buf := make([]byte, 65536)
-		_, addr, err := syscall.Recvfrom(sock, buf, 0)
-		if err != nil { panic(err) }
-		if p.finish { break }
-
-		// Resolve UDP header
-		// localPort := binary.BigEndian.Uint16(buf[22:24])
-		remotePort := binary.BigEndian.Uint16(buf[20:22])
-		if remotePort != REMOTE_PORT { continue }
-		txId := binary.BigEndian.Uint16(buf[28:30])
-		if txId != TRANSACTION_ID  { continue }
-
-		dnsPacket := buf[28:]
-		question, _ := ParseDNSQuestion(dnsPacket, 12)
-		if len(question.Name) == 0 { continue }
-		// log.Println(question.Name, len(question.Name))
-		if len(question.Name) != IPV4_TTL_DOMAIN_LEN { continue }
-		targetIp := net.IP([]byte(question.Name[2 + RAND_LEN + FORMAT_TTL_LEN:][:4])).String()
-		p.outDnsTargetChan <- targetIp
-		p.outDnsRealChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 	}
 }
 
