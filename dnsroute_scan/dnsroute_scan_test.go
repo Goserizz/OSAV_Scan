@@ -5,7 +5,6 @@ import (
 	"net"
 	"log"
 	"time"
-	"strings"
 )
 
 func TestDNS(t *testing.T) {
@@ -13,7 +12,7 @@ func TestDNS(t *testing.T) {
 	if err != nil { log.Fatal(err) }
 	dstMac, err := net.ParseMAC("0c:81:26:30:b8:78")
 	if err != nil { log.Fatal(err) }
-	pool := NewDNSPool(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 20)
+	pool := NewDNSPoolSlow(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 20)
 	go func() { for{log.Println(pool.GetIcmp())} }()
 	go func() { for{log.Println(pool.GetDns())} }()
 	pool.Add(net.ParseIP("8.8.8.8").To4())
@@ -28,17 +27,16 @@ func TestAliveDNS(t *testing.T) {
 	if err != nil { log.Fatal(err) }
 	dstMac, err := net.ParseMAC("0c:81:26:30:b8:78")
 	if err != nil { log.Fatal(err) }
-	pool := NewDNSPool(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 20)
+	pool := NewDNSPool(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 255)
 	go func() { 
 		for {
 			targetIp, realIp := pool.GetDns()
+			if targetIp == "" { continue }
 			if targetIp == realIp { Append1Addr6ToFS("20240116-alive.txt", targetIp) }
 		}
 	}()
 	
-	inputFile := "20240116-dns.txt"
-	for _, line := range ReadLineAddr6FromFS(inputFile) {
-		pool.Add(net.ParseIP(strings.Split(line, ",")[1]).To4())
-	}
+	inputFile := "20240116-dnslist.txt"
+	for _, ipStr := range ReadLineAddr6FromFS(inputFile) { pool.Add(net.ParseIP(ipStr).To4()) }
 	time.Sleep(10 * time.Second)
 }

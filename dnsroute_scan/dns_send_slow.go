@@ -1,44 +1,29 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"time"
 	"bytes"
 	"strings"
 	"syscall"
-	"math/rand"
 	"encoding/binary"
 )
 
 const (
-	MAC_HDR_SIZE = 14
-	IPV4_HDR_SIZE = 20
-	UDP_HDR_SIZE = 8
-	DNS_HDR_SIZE = 12
-	DNS_QRY_SIZE = 12
-	QRY_DOMAIN = "v4.ruiruitest.online"
-	JD_DOMAIN = "jd.com"
-	TRANSACTION_ID uint16 = 6666
-	CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
-	RAND_LEN = 5  // must be odd
-	FORMAT_IPV4_LEN = 4
-	FORMAT_IPV4 = "0000"
-	FORMAT_TTL_LEN = 2
-	FORMAT_TTL  = "00"
+	DNS_QRY_SIZE_SLOW = 50
+	RAND_LEN_SLOW = 4  // must be even
+	FORMAT_IPV4_LEN_SLOW = 15
+	FORMAT_IPV4_SLOW = "000:000:000:000"
 )
 
 var (
-	IPV4_TTL_DOMAIN_LEN = RAND_LEN + FORMAT_TTL_LEN + FORMAT_IPV4_LEN + len(QRY_DOMAIN) + 4
-	IPV4_LEN = uint16(IPV4_HDR_SIZE + UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE)
+	ALL_HDR_LEN = MAC_HDR_SIZE + IPV4_HDR_SIZE + UDP_HDR_SIZE + DNS_HDR_SIZE
+	IPV4_TTL_DOMAIN_LEN_SLOW = RAND_LEN_SLOW + FORMAT_TTL_LEN + FORMAT_IPV4_LEN_SLOW + len(QRY_DOMAIN) + 4
+	IPV4_LEN_SLOW = uint16(IPV4_HDR_SIZE + UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE_SLOW)
 )
 
-func GetDomainRandPfx(randLen int) string {
-	randSuffixBytes := make([]byte, randLen)
-	for i := range randSuffixBytes { randSuffixBytes[i] = CHARS[rand.Intn(len(CHARS))] }
-	return string(randSuffixBytes)
-}
-
-type DNSPool struct {
+type DNSPoolSlow struct {
 	inIpChan          chan []byte
 	outIcmpTargetChan chan string
 	outIcmpRealChan   chan string
@@ -55,8 +40,8 @@ type DNSPool struct {
 	nSender           int
 }
 
-func NewDNSPool(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac []byte, ttl uint8) *DNSPool {
-	dnsPool := &DNSPool{
+func NewDNSPoolSlow(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac []byte, ttl uint8) *DNSPoolSlow {
+	p := &DNSPoolSlow{
 		inIpChan: make(chan []byte, bufSize),
 		outIcmpTargetChan: make(chan string, bufSize),
 		outIcmpRealChan: make(chan string, bufSize),
@@ -71,17 +56,17 @@ func NewDNSPool(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac,
 		finish: false,
 		nSender: nSender,
 	}
-	for i := 0; i < nSender; i ++ { go dnsPool.send() }
-	go dnsPool.recvDns()
-	go dnsPool.recvIcmp()
-	return dnsPool
+	for i := 0; i < nSender; i ++ { go p.send() }
+	go p.recvDns()
+	go p.recvIcmp()
+	return p
 }
 
-func (p *DNSPool) Add(dstIp []byte) {
+func (p *DNSPoolSlow) Add(dstIp []byte) {
 	p.inIpChan <- dstIp
 }
 
-func (p *DNSPool) GetIcmp() (string, string, string) {
+func (p *DNSPoolSlow) GetIcmp() (string, string, string) {
 	select {
 		case targetIp := <- p.outIcmpTargetChan:
 			return targetIp, <- p.outIcmpRealChan, <- p.outIcmpResChan
@@ -90,7 +75,7 @@ func (p *DNSPool) GetIcmp() (string, string, string) {
 	}
 }
 
-func (p *DNSPool) GetDns() (string, string) {
+func (p *DNSPoolSlow) GetDns() (string, string) {
 	select {
 	case targetIp := <- p.outDnsTargetChan:
 		return targetIp, <- p.outDnsRealChan
@@ -99,11 +84,11 @@ func (p *DNSPool) GetDns() (string, string) {
 }
 }
 
-func (p *DNSPool) LenInChan() int {
+func (p *DNSPoolSlow) LenInChan() int {
 	return len(p.inIpChan)
 }
 
-func (p *DNSPool) send() {
+func (p *DNSPoolSlow) send() {
 	// Create IPv6 raw socket
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_IP)
 	if err != nil { panic(err) }
@@ -126,7 +111,7 @@ func (p *DNSPool) send() {
 	ipv4Hdr[0] = 0x45  // Vesrion = 4 | header length = 5
 	// [1]	 TOS
 	// [2] [3] Total length
-	binary.BigEndian.PutUint16(ipv4Hdr[2:4], IPV4_LEN)
+	binary.BigEndian.PutUint16(ipv4Hdr[2:4], IPV4_LEN_SLOW)
 	// [4] [5] Identification
 	// [6] [7] Flags | Fragment offset
 	ipv4Hdr[8] = p.ttl  // TTL
@@ -139,7 +124,7 @@ func (p *DNSPool) send() {
 	udpHdrBuf := new(bytes.Buffer)
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // local port
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(53))  // remote port
-	binary.Write(udpHdrBuf, binary.BigEndian, uint16(UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE))  // length
+	binary.Write(udpHdrBuf, binary.BigEndian, uint16(UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE_SLOW))  // length
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // checksum
 	udpHdr := udpHdrBuf.Bytes()
 
@@ -157,8 +142,10 @@ func (p *DNSPool) send() {
 	dnsHdr := dnsHdrBuf.Bytes()
 
 	// construct DNS Query
+	randPfx := GetDomainRandPfx(RAND_LEN_SLOW)
+	preDomain := randPfx + "." + fmt.Sprintf("%02d", p.ttl) + "." + FORMAT_IPV4_SLOW + "." + QRY_DOMAIN
 	dnsQryBuf := new(bytes.Buffer)
-	sections := strings.Split(JD_DOMAIN, ".")
+	sections := strings.Split(preDomain, ".")
 	for _, s := range sections {
 		binary.Write(dnsQryBuf, binary.BigEndian, byte(len(s)))  // length
 		for _, b := range []byte(s) {
@@ -174,43 +161,63 @@ func (p *DNSPool) send() {
 	ipv4Cks := uint32(0)
 	for i := 0; i < 20; i += 2 { ipv4Cks += uint32(binary.BigEndian.Uint16(ipv4Hdr[i:i+2])) }
 
+	// pre calculate UDP checksum
+	udpCks := uint32(0)
+	for i := 0; i < 4; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(srcIp.To4()[i:i+2])) }
+	udpCks += UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE_SLOW  // UDP Length
+	udpCks += syscall.IPPROTO_UDP  // upper layer protocol: UDP
+	for i := 0; i < 6; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(udpHdr[i:i+2])) }
+	for i := 0; i < DNS_HDR_SIZE; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsHdr[i:i+2])) }
+	for i := 0; i < 2 + RAND_LEN_SLOW + FORMAT_TTL_LEN; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsQry[i:i+2])) }
+	for i := 3 + RAND_LEN_SLOW + FORMAT_TTL_LEN + FORMAT_IPV4_LEN_SLOW; i < DNS_QRY_SIZE_SLOW; i += 2 { udpCks += uint32(binary.BigEndian.Uint16(dnsQry[i:i+2])) }
+
 	// Combine IPv6 header, UDP header, DNS header, DNS query
 	packet := append(macHdr, ipv4Hdr...)
 	packet  = append(packet, udpHdr...)
 	packet  = append(packet, dnsHdr...)
 	packet  = append(packet, dnsQry...)
 
-	// dstIpStrBytes := make([]byte, FORMAT_IPV4_LEN + 1)
-	// dstIpStrBytes[0] = FORMAT_IPV4_LEN
+	dstIpStrBytes := make([]byte, FORMAT_IPV4_LEN_SLOW + 1)
+	dstIpStrBytes[0] = FORMAT_IPV4_LEN_SLOW
 
 	var dstIp []byte
 	OuterLoop:
 	for {
 		select {
 		case dstIp = <- p.inIpChan:
-		case <-time.After(2 * time.Second):
-			if p.finish { break OuterLoop } else { continue OuterLoop }
+		case <-time.After(2 * time.Second): if p.finish { break OuterLoop } else { continue OuterLoop }
 		}
-		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
+		dstIpStr := net.IP(dstIp).String()
 
 		// Complete IPv4 Header
-		copy(packet[18:20], dstIp[:2])  // encode high 16 bits in IP-ID
+		// copy(ipv4Hdr[4:6], dstIp[:2])
+		copy(packet[18:20], dstIp[:2])
+		// ipv4Hdr[8] = nowTtl
+		// copy(ipv4Hdr[16:20], dstIp.To4())
 		copy(packet[30:34], dstIp)
 		ipv4NowCks := ipv4Cks + dstIpHigh + dstIpHigh + dstIpLow
+		// for i := 0; i < 4; i += 2 { ipv4NowCks += uint32(binary.BigEndian.Uint16(dstIp[i:i+2])) }
+		// binary.BigEndian.PutUint16(ipv4Hdr[10:12], uint16(^(ipv4NowCks + (ipv4NowCks >> 16))))
 		binary.BigEndian.PutUint16(packet[24:26], uint16(^(ipv4NowCks + (ipv4NowCks >> 16))))
 
 		// Complete UDP Header
-		copy(packet[34:36], dstIp[2:4])  // encode low 16 bits in source port
-		copy(packet[64:], dstIp)
+		copy(packet[34:36], dstIp[2:4])
+		copy(dstIpStrBytes[1:], []byte(FormatIpv4(dstIpStr)))
+		udpNowCks := udpCks + dstIpHigh + dstIpLow + dstIpLow
+		for i := 0; i < len(dstIpStrBytes); i += 2 { udpNowCks += uint32(binary.BigEndian.Uint16(dstIpStrBytes[i:i+2])) }
+		binary.BigEndian.PutUint16(packet[40:42], uint16(^(udpNowCks + (udpNowCks >> 16))))
+
+		// Complete DNS Query
+		copy(packet[62:], dstIpStrBytes)
 
 		// Send packet
 		for { if err = syscall.Sendto(fd, packet, 0, bindAddr); err == nil { break } }
 	}
 }
 
-func (p *DNSPool) recvDns() {
+func (p *DNSPoolSlow) recvDns() {
 	// Create IPv4 raw socket
 	sock, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
 	if err != nil { panic(err) }
@@ -240,15 +247,13 @@ func (p *DNSPool) recvDns() {
 		dnsPacket := buf[28:]
 		question, _ := ParseDNSQuestion(dnsPacket, 12)
 		if len(question.Name) == 0 { continue }
-		// log.Println(question.Name, len(question.Name))
-		if len(question.Name) != IPV4_TTL_DOMAIN_LEN { continue }
-		targetIp := net.IP([]byte(question.Name[2 + RAND_LEN + FORMAT_TTL_LEN:][:4])).String()
-		p.outDnsTargetChan <- targetIp
+		if len(question.Name) != IPV4_TTL_DOMAIN_LEN_SLOW { continue }
+		p.outDnsTargetChan <- DeformatIpv4(question.Name[2+RAND_LEN_SLOW+FORMAT_TTL_LEN:][:FORMAT_IPV4_LEN_SLOW])
 		p.outDnsRealChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 	}
 }
 
-func (p *DNSPool) recvIcmp() {
+func (p *DNSPoolSlow) recvIcmp() {
 	// 创建原始套接字
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
 	if err != nil { panic(err) }
@@ -273,6 +278,6 @@ func (p *DNSPool) recvIcmp() {
 	}
 }
 
-func (p *DNSPool) Finish() {
+func (p *DNSPoolSlow) Finish() {
 	p.finish = true
 }
