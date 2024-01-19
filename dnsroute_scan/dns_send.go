@@ -39,7 +39,7 @@ func GetDomainRandPfx() string {
 }
 
 type DNSPool struct {
-	inIpChan          chan string
+	inIpChan          chan []byte
 	outIcmpTargetChan chan string
 	outIcmpRealChan   chan string
 	outIcmpResChan    chan string
@@ -57,7 +57,7 @@ type DNSPool struct {
 
 func NewDNSPool(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac []byte, ttl uint8) *DNSPool {
 	dnsPool := &DNSPool{
-		inIpChan: make(chan string, bufSize),
+		inIpChan: make(chan []byte, bufSize),
 		outIcmpTargetChan: make(chan string, bufSize),
 		outIcmpRealChan: make(chan string, bufSize),
 		outIcmpResChan: make(chan string, bufSize),
@@ -77,8 +77,8 @@ func NewDNSPool(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac,
 	return dnsPool
 }
 
-func (p *DNSPool) Add(dstIpStr string) {
-	p.inIpChan <- dstIpStr
+func (p *DNSPool) Add(dstIp []byte) {
+	p.inIpChan <- dstIp
 }
 
 func (p *DNSPool) GetIcmp() (string, string, string) {
@@ -195,15 +195,15 @@ func (p *DNSPool) send() {
 	// dstIpStrBytes := make([]byte, FORMAT_IPV4_LEN + 1)
 	// dstIpStrBytes[0] = FORMAT_IPV4_LEN
 
-	var dstIpStr string
+	var dstIp []byte
 	OuterLoop:
 	for {
 		select {
-		case dstIpStr = <- p.inIpChan:
+		case dstIp = <- p.inIpChan:
 		case <-time.After(2 * time.Second):
 			if p.finish { break OuterLoop } else { continue OuterLoop }
 		}
-		dstIp := net.ParseIP(dstIpStr).To4()
+		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
 
@@ -274,9 +274,8 @@ func (p *DNSPool) recvDns() {
 		question, _ := ParseDNSQuestion(dnsPacket, 12)
 		if len(question.Name) == 0 { continue }
 		// log.Println(question.Name, len(question.Name))
-		qryDomain := strings.Replace(question.Name, "\\", "", -1)
-		if len(qryDomain) != IPV4_TTL_DOMAIN_LEN { continue }
-		targetIp := net.IP([]byte(qryDomain[2 + RAND_LEN + FORMAT_TTL_LEN:][:4])).String()
+		if len(question.Name) != IPV4_TTL_DOMAIN_LEN { continue }
+		targetIp := net.IP([]byte(question.Name[2 + RAND_LEN + FORMAT_TTL_LEN:][:4])).String()
 		p.outDnsTargetChan <- targetIp
 		p.outDnsRealChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 	}

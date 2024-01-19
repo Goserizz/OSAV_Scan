@@ -16,7 +16,7 @@ var (
 	pps = flag.Int("pps", 200000, "Sending rate PPS.")
 	dstMacStr = flag.String("dmac", "", "The mac address of router.")
 	nTot = flag.Uint64("n", 3970694159, "The number of ip addresses will be sent.")
-	nSend = flag.Int("nsend", 10, "The number of senders.")
+	nSend = flag.Int("nsend", 1, "The number of senders.")
 )
 
 func main() {

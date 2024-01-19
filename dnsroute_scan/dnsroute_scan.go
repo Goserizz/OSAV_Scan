@@ -16,10 +16,10 @@ import (
 const (
 	REMOTE_PORT uint16 = 53
 	LOG_INTV = 100000
-	BURST = 1000
+	BURST = 10000
 	PRIME uint64 = 4294967311
 	IPNUM uint64 = 4294967296
-	BUF_SIZE = 100000
+	BUF_SIZE = 10000
 )
 
 func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string, startTtl, endTtl uint8, nSender, pps int, srcMac, dstMac []byte) {
@@ -48,7 +48,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 				if counter % LOG_INTV == 0 { bar.Add(LOG_INTV) }
 				_, ok := doneIps.Load(dstIpStr); if ok { continue }
 				limiter.Wait(context.TODO())
-				p.Add(dstIpStr)
+				p.Add(net.ParseIP(dstIpStr).To4())
 			}
 			finish = true
 		}()
@@ -103,10 +103,10 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile, dnsF
 				ipDec = (ipDec * 3) % PRIME
 				if ipDec >= IPNUM || IsBogon(ipDec) { continue }
 				if (i + 1) % LOG_INTV == 0 { bar.Add(LOG_INTV); bar.Describe(fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan())) }
-				dstIpBin := make([]byte, 4)
-				binary.BigEndian.PutUint32(dstIpBin, uint32(ipDec))
+				dstIp := make([]byte, 4)
+				binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
 				limiter.Wait(context.TODO())
-				p.Add(net.IP(dstIpBin).String())
+				p.Add(dstIp)
 				counter ++
 				if counter == nTot { break }
 			}
