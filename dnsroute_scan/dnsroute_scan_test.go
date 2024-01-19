@@ -16,7 +16,7 @@ func TestDNS(t *testing.T) {
 	pool := NewDNSPool(10, 100, "107.189.29.130", "eth0", srcMac, dstMac, 20)
 	go func() { for{log.Println(pool.GetIcmp())} }()
 	go func() { for{log.Println(pool.GetDns())} }()
-	pool.Add("8.8.8.8")
+	pool.Add(net.ParseIP("8.8.8.8").To4())
 	time.Sleep(5 * time.Second)
 	pool.Finish()
 	
@@ -38,7 +38,7 @@ func TestAliveDNS(t *testing.T) {
 	
 	inputFile := "20240116-dns.txt"
 	for _, line := range ReadLineAddr6FromFS(inputFile) {
-		pool.Add(strings.Split(line, ",")[1])
+		pool.Add(net.ParseIP(strings.Split(line, ",")[1]).To4())
 	}
 	time.Sleep(10 * time.Second)
 }
