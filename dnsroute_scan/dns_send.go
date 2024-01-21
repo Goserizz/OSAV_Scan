@@ -193,7 +193,6 @@ func (p *DNSPool) send() {
 
 		// Complete UDP Header
 		copy(packet[34:36], dstIp[2:4])  // encode low 16 bits in source port
-		copy(packet[64:], dstIp)
 
 		// Send packet
 		for { if err = syscall.Sendto(fd, packet, 0, bindAddr); err == nil { break } }
