@@ -174,13 +174,15 @@ func (p *DNSPool) send() {
 	// dstIpStrBytes[0] = FORMAT_IPV4_LEN
 
 	var dstIp []byte
-	OuterLoop:
+	// OuterLoop:
 	for {
-		select {
-		case dstIp = <- p.inIpChan:
-		case <-time.After(2 * time.Second):
-			if p.finish { break OuterLoop } else { continue OuterLoop }
-		}
+		// select {
+		// case dstIp = <- p.inIpChan:
+		// case <-time.After(2 * time.Second):
+		// 	if p.finish { break OuterLoop } else { continue OuterLoop }
+		// }
+		dstIp = <- p.inIpChan
+		if dstIp == nil { break }
 		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
@@ -226,5 +228,6 @@ func (p *DNSPool) recvIcmp() {
 }
 
 func (p *DNSPool) Finish() {
+	p.Add(nil)
 	p.finish = true
 }
