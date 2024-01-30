@@ -15,8 +15,9 @@ var (
 	dnsFile = flag.String("d", "", "Output file for DNS response without transparent forwarding.")
 	pps = flag.Int("pps", 200000, "Sending rate PPS.")
 	dstMacStr = flag.String("dmac", "", "The mac address of router.")
-	nTot = flag.Uint64("n", 3970694159, "The number of ip addresses will be sent.")
+	nTot = flag.Uint64("n", 3702258688, "The number of ip addresses will be sent.")
 	nSend = flag.Int("nsend", 1, "The number of senders.")
+	nSeg = flag.Uint64("nseg", 0, "The number of addresses scannned in batch.")
 )
 
 func main() {
@@ -34,8 +35,10 @@ func main() {
 	
 	if *inputFile != "" {
 		DNSRouteScan(srcIpStr, *iface, *inputFile, *outputFile, *natFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *nSend, *pps, srcMac, dstMac)
-	} else {
+	} else if *nSeg == 0 {
 		DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nTot)
+	} else {
+		DNSRouteScanWithForwarder(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nSeg, *nTot)
 	}
 	
 }
