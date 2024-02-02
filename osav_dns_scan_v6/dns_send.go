@@ -218,7 +218,7 @@ func (p *DNSPool) recv() {
 
 	// Read packets
 	for {
-		buf := make([]byte, 65536)
+		buf := make([]byte, 1024)
 		_, addr, err := syscall.Recvfrom(sock, buf, 0)
 		if err != nil {
 			continue
@@ -230,10 +230,16 @@ func (p *DNSPool) recv() {
 		localPort := uint16(buf[2]) << 8 | uint16(buf[3])
 		if localPort != p.localPort { continue }
 
-		dnsPacket := buf[8:]
-		question, _ := utils.ParseDNSQuestion(dnsPacket, 12)
-		if len(question.Name) != DOMAIN_LEN { continue }
-		p.outOrgChan <- net.IP([]byte(question.Name[1 + RAND_LEN:][:FORMAT_IPV6_LEN])).String()
+		// dnsPacket := buf[8:]
+		// log.Println(buf)
+		if buf[20] != RAND_LEN { continue }
+		if buf[21 + RAND_LEN] != FORMAT_IPV6_LEN { continue }
+		if buf[22 + RAND_LEN + FORMAT_IPV6_LEN] != 2 { continue }
+		if buf[23 + RAND_LEN + FORMAT_IPV6_LEN + 2] != 10 { continue }
+		if buf[24 + RAND_LEN + FORMAT_IPV6_LEN + 2 + 10] != 6 { continue }
+		if buf[25 + RAND_LEN + FORMAT_IPV6_LEN + 2 + 10 + 6] != 0 { continue }
+
+		p.outOrgChan <- net.IP(buf[22 + RAND_LEN:][:FORMAT_IPV6_LEN]).String()
 		p.outRealChan <- remoteIpStr
 	}
 }
