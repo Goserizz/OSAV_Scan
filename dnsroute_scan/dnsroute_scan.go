@@ -6,7 +6,10 @@ import (
 	"net"
 	"time"
 	"sync"
+	"bufio"
+	"strings"
 	"context"
+	"path/filepath"
 	"encoding/binary"
 
 	"golang.org/x/time/rate"
@@ -123,6 +126,90 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile strin
 		}()
 
 		for !finish { time.Sleep(time.Second) }
+		p.Finish()
+	}
+}
+
+func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, nSeg, nTot uint64) {
+	os.RemoveAll(outDir)
+	os.Mkdir(outDir, 0755)
+
+	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
+	ipDecStart := uint64(1)
+	ipDec := uint64(1)
+	fileNo := 0
+	for seg := uint64(0); seg < nTot; seg += nSeg {
+		icmpFile := filepath.Join(outDir, fmt.Sprintf("icmp-%d.txt", fileNo))
+		dnsFile  := filepath.Join(outDir, fmt.Sprintf("dns-%d.txt", fileNo))
+		// traceroute
+		for ttl := startTtl; ttl <= endTtl; ttl ++ {
+			finish := false
+			p := NewDNSPool(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
+			go func() {
+				ipDec = ipDecStart
+				counter := seg
+				bar := progressbar.Default(int64(nSeg), fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan()))
+				for i := uint64(0); i < nSeg; i ++ {
+					if (i + 1) % LOG_INTV == 0 { bar.Add(LOG_INTV); bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d waiting", seg, seg + nSeg, ttl, p.LenInChan())) }
+					ipDec = (ipDec * 3) % PRIME
+					if ipDec >= IPNUM || IsBogon(ipDec) { continue }
+					dstIp := make([]byte, 4)
+					binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
+					limiter.Wait(context.TODO())
+					p.Add(dstIp)
+					counter ++
+					if counter == nTot { break }
+				}
+				time.Sleep(10 * time.Second)
+				finish = true
+			}()
+
+			go func() {
+				for {
+					targetIp, realIp, resIp := p.GetIcmp()
+					if targetIp == "" {
+						if finish { break }
+					} else if targetIp != realIp { Append1Addr6ToFS(icmpFile, targetIp + "," + realIp + "," + resIp) }
+				}
+			}()
+
+			for !finish { time.Sleep(time.Second) }
+			p.Finish()
+		}
+		ipDecStart = ipDec
+		fileNo += 1
+
+		// DNS
+		finish := false
+		ipStrSet := make(map[string]bool)
+		icmpF, err := os.Open(icmpFile)
+		if err != nil { panic(err) }
+		scanner := bufio.NewScanner(icmpF)
+		for scanner.Scan() { ipStrSet[strings.Split(scanner.Text(), ",")[0]] = true }
+		icmpF.Close()
+
+		p := NewDNSPoolSlow(nSender, 10000, srcIpStr, ifaceName, srcMac, dstMac, 99)
+		go func() {
+			for {
+				targetIp, realIp := p.GetDns()
+				if targetIp == "" {
+					if finish { break }
+				} else if targetIp != realIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp)}
+			}
+		}()
+		for i := 0; i < 3; i ++ {
+			for ipStr := range ipStrSet {
+				limiter.Wait(context.TODO())
+				p.Add(net.ParseIP(ipStr).To4())
+			}
+			time.Sleep(10 * time.Second)
+			dnsF, err := os.Open(dnsFile)
+			if err != nil { panic(err) }
+			scanner := bufio.NewScanner(dnsF)
+			for scanner.Scan() { delete(ipStrSet, strings.Split(scanner.Text(), ",")[0]) }
+			dnsF.Close()
+		}
+		finish = true
 		p.Finish()
 	}
 }
