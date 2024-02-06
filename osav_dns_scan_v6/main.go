@@ -18,6 +18,7 @@ import (
 const (
 	BURST = 10000
 	UPDATE_INTV = 100000
+	BUF_SIZE = 10000
 )
 
 var (
@@ -33,7 +34,7 @@ var (
 
 func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMac, dstMac []byte) {
 	sendFinish := false
-	dnsPool := NewDNSPool(100000, srcIpStr, ifaceName, srcMac, dstMac, uint16(*localPort))
+	dnsPool := NewDNSPool(BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, uint16(*localPort))
 	var pfxBitsArr []utils.BitsArray
 	pfxBitsInd := make(map[int]int)
 	// var pfxBitsInd []int
@@ -106,7 +107,7 @@ func V6OsavScan(ifaceName, srcIpStr, inputFile, diffFile, sameFile string, srcMa
 			}
 			for _, i := range delArr { delete(pfxBitsInd, i) }
 			newPfxBitsInd := make(map[int]int)
-			for k, v := range pfxBitsInd { newPfxBitsInd[k] = v}
+			for k, v := range pfxBitsInd { newPfxBitsInd[k] = v }
 			pfxBitsInd = newPfxBitsInd
 		}
 		sendFinish = true
