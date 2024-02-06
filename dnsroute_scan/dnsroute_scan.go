@@ -197,6 +197,14 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 				} else if targetIp != realIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp)}
 			}
 		}()
+		go func() {
+			for {
+				targetIp, realIp, resIp := p.GetIcmp()
+				if targetIp == "" {
+					if finish { break }
+				} else if realIp == resIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp) }
+			}
+		}()
 		for i := 0; i < 3; i ++ {
 			for ipStr := range ipStrSet {
 				limiter.Wait(context.TODO())

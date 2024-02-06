@@ -239,8 +239,8 @@ func (p *DNSPoolSlow) recvDns() {
 
 		// Resolve UDP header
 		// localPort := binary.BigEndian.Uint16(buf[22:24])
-		remotePort := binary.BigEndian.Uint16(buf[20:22])
-		if remotePort != REMOTE_PORT { continue }
+		// remotePort := binary.BigEndian.Uint16(buf[20:22])
+		// if remotePort != REMOTE_PORT { continue }
 		txId := binary.BigEndian.Uint16(buf[28:30])
 		if txId != TRANSACTION_ID  { continue }
 
@@ -264,14 +264,14 @@ func (p *DNSPoolSlow) recvIcmp() {
 	err = syscall.Bind(fd, &addr)
 	if err != nil { panic(err) }
 
-	ipv4LenUint8 := uint8(IPV4_LEN)
+	ipv4LenUint8 := uint8(IPV4_LEN_SLOW)
 	// 接收ICMP报文
 	for {
 		buf := make([]byte, 1500)
 		_, addr, err := syscall.Recvfrom(fd, buf, 0)
 		if err != nil { panic(err) }
 		if p.finish { break }
-		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
+		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP { continue }
 		p.outIcmpTargetChan <- net.IPv4(buf[32], buf[33], buf[48], buf[49]).String()
 		p.outIcmpRealChan <- net.IP(buf[44:48]).String()
 		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
