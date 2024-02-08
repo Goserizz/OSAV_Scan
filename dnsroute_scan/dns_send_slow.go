@@ -17,6 +17,14 @@ const (
 	FORMAT_IPV4_SLOW = "000:000:000:000"
 )
 
+type ICMPResponse struct {
+	Target string
+	Real string
+	Res string
+	Code uint8
+	Type uint8
+}
+
 var (
 	ALL_HDR_LEN = MAC_HDR_SIZE + IPV4_HDR_SIZE + UDP_HDR_SIZE + DNS_HDR_SIZE
 	IPV4_TTL_DOMAIN_LEN_SLOW = RAND_LEN_SLOW + FORMAT_TTL_LEN + FORMAT_IPV4_LEN_SLOW + len(QRY_DOMAIN) + 4
@@ -25,9 +33,7 @@ var (
 
 type DNSPoolSlow struct {
 	inIpChan          chan []byte
-	outIcmpTargetChan chan string
-	outIcmpRealChan   chan string
-	outIcmpResChan    chan string
+	outIcmpChan       chan *ICMPResponse
 	outDnsTargetChan  chan string
 	outDnsRealChan    chan string
 	srcIpStr          string
@@ -43,9 +49,7 @@ type DNSPoolSlow struct {
 func NewDNSPoolSlow(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac, dstMac []byte, ttl uint8) *DNSPoolSlow {
 	p := &DNSPoolSlow{
 		inIpChan: make(chan []byte, bufSize),
-		outIcmpTargetChan: make(chan string, bufSize),
-		outIcmpRealChan: make(chan string, bufSize),
-		outIcmpResChan: make(chan string, bufSize),
+		outIcmpChan: make(chan *ICMPResponse, bufSize),
 		outDnsTargetChan: make(chan string, bufSize),
 		outDnsRealChan: make(chan string, bufSize),
 		srcIpStr: srcIpStr,
@@ -66,12 +70,12 @@ func (p *DNSPoolSlow) Add(dstIp []byte) {
 	p.inIpChan <- dstIp
 }
 
-func (p *DNSPoolSlow) GetIcmp() (string, string, string) {
+func (p *DNSPoolSlow) GetIcmp() *ICMPResponse {
 	select {
-		case targetIp := <- p.outIcmpTargetChan:
-			return targetIp, <- p.outIcmpRealChan, <- p.outIcmpResChan
+		case icmpRes := <- p.outIcmpChan:
+			return icmpRes
 		case <-time.After(time.Second):
-			return "", "", ""
+			return nil
 	}
 }
 
@@ -272,9 +276,13 @@ func (p *DNSPoolSlow) recvIcmp() {
 		if err != nil { panic(err) }
 		if p.finish { break }
 		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP { continue }
-		p.outIcmpTargetChan <- net.IPv4(buf[32], buf[33], buf[48], buf[49]).String()
-		p.outIcmpRealChan <- net.IP(buf[44:48]).String()
-		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
+		p.outIcmpChan <- &ICMPResponse{
+			Target: net.IPv4(buf[32], buf[33], buf[48], buf[49]).String(),
+			Real: net.IP(buf[44:48]).String(),
+			Res: net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String(),
+			Type: buf[20],
+			Code: buf[21],
+		}
 	}
 }
 

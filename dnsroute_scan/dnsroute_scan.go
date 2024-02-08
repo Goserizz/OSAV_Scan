@@ -59,12 +59,12 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 		// recieve icmp
 		go func() {
 			for {
-				targetIp, realIp, resIp := p.GetIcmp()
-				if targetIp == "" {
+				icmpRes := p.GetIcmp()
+				if icmpRes == nil {
 					if finish { break }
 				} else {
-					if _, ok := testIps.Load(targetIp); !ok { continue }
-					if targetIp != realIp { Append1Addr6ToFS(outFile, targetIp + "," + realIp + "," + resIp) }
+					if _, ok := testIps.Load(icmpRes.Target); !ok { continue }
+					if icmpRes.Target != icmpRes.Real { Append1Addr6ToFS(outFile, icmpRes.Target + "," + icmpRes.Real + "," + icmpRes.Real) }
 				}
 			}
 		}()
@@ -194,15 +194,15 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 				targetIp, realIp := p.GetDns()
 				if targetIp == "" {
 					if finish { break }
-				} else if targetIp != realIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp)}
+				} else if targetIp != realIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp + ",DNS")}
 			}
 		}()
 		go func() {
 			for {
-				targetIp, realIp, resIp := p.GetIcmp()
-				if targetIp == "" {
+				icmpRes := p.GetIcmp()
+				if icmpRes == nil {
 					if finish { break }
-				} else if realIp == resIp { Append1Addr6ToFS(dnsFile, targetIp + "," + realIp) }
+				} else if icmpRes.Target != icmpRes.Real && icmpRes.Real == icmpRes.Res { Append1Addr6ToFS(dnsFile, icmpRes.Target + "," + icmpRes.Res + fmt.Sprintf(",ICMP%d-%d", icmpRes.Type, icmpRes.Code)) }
 			}
 		}()
 		for i := 0; i < 3; i ++ {
