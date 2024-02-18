@@ -64,7 +64,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 					if finish { break }
 				} else {
 					if _, ok := testIps.Load(icmpRes.Target); !ok { continue }
-					if icmpRes.Target != icmpRes.Real { Append1Addr6ToFS(outFile, icmpRes.Target + "," + icmpRes.Real + "," + icmpRes.Real) }
+					if icmpRes.Target != icmpRes.Real || icmpRes.Target == icmpRes.Res { Append1Addr6ToFS(outFile, icmpRes.Target + "," + icmpRes.Real + "," + icmpRes.Real + "," + fmt.Sprintf("%d", ttl)) }
 				}
 			}
 		}()
@@ -78,7 +78,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 				} else {
 					if _, ok := testIps.Load(targetIp); !ok { continue }
 					if targetIp != realIp {
-						Append1Addr6ToFS(dnsFile, targetIp + "," + realIp)
+						Append1Addr6ToFS(dnsFile, targetIp + "," + realIp + "," + fmt.Sprintf("%d", ttl))
 						doneIps.Store(targetIp, true)
 					}
 				}
@@ -121,7 +121,7 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile strin
 				targetIp, realIp, resIp := p.GetIcmp()
 				if targetIp == "" {
 					if finish { break }
-				} else if targetIp != realIp { Append1Addr6ToFS(outFile, targetIp + "," + realIp + "," + resIp) }
+				} else if targetIp != realIp { Append1Addr6ToFS(outFile, targetIp + "," + realIp + "," + resIp + "," + fmt.Sprintf("%d", ttl)) }
 			}
 		}()
 
@@ -141,6 +141,10 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 	for seg := uint64(0); seg < nTot; seg += nSeg {
 		icmpFile := filepath.Join(outDir, fmt.Sprintf("icmp-%d.txt", fileNo))
 		dnsFile  := filepath.Join(outDir, fmt.Sprintf("dns-%d.txt", fileNo))
+		file, err := os.Create(icmpFile)
+		if err != nil { panic(err) } else { file.Close() }
+		file, err = os.Create(dnsFile)
+		if err != nil { panic(err) } else { file.Close() }
 		// traceroute
 		for ttl := startTtl; ttl <= endTtl; ttl ++ {
 			finish := false
@@ -169,7 +173,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 					targetIp, realIp, resIp := p.GetIcmp()
 					if targetIp == "" {
 						if finish { break }
-					} else if targetIp != realIp { Append1Addr6ToFS(icmpFile, targetIp + "," + realIp + "," + resIp) }
+					} else if targetIp != realIp || targetIp == resIp { Append1Addr6ToFS(icmpFile, targetIp + "," + realIp + "," + resIp + "," + fmt.Sprintf("%d", ttl)) }
 				}
 			}()
 
