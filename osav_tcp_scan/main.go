@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	ifaceName 	= flag.String("iface", "eth0", "The interface used for scanning.")
-	dstMacStr 	= flag.String("dmac", "", "The mac address of router.")
-	pps	   		= flag.Uint64("rate", 250000, "PPS used for scanning.")
-	localPort   = flag.Uint("locport", 37301, "Local port used for scanning.")
+	ifaceName 	= flag.String("i", "eth0", "The interface used for scanning.")
+	dstMacStr 	= flag.String("d", "", "The mac address of router.")
+	pps	   		= flag.Uint64("pps", 250000, "PPS used for scanning.")
+	localPort   = flag.Uint("l", 37301, "Local port used for scanning.")
+	remotePort  = flag.Uint("r", 80, "Remote port used for scanning.")
 )
 
 const (
@@ -85,8 +86,5 @@ func TCPScan(remotePort uint16) {
 
 func main() {
 	flag.Parse()
-	scanPorts := []uint16{80, 443, 7547, 21, 25, 8080, 4567, 53}
-	for _, scanPort := range scanPorts {
-		TCPScan(scanPort)
-	}
+	TCPScan(uint16(*remotePort))
 }
