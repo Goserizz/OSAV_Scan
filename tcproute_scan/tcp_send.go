@@ -19,6 +19,15 @@ const (
 	DATA_OFFSET = 6
 )
 
+type ICMPResponse struct {
+	Target string
+	Real string
+	Res string
+	Port uint16
+	Code uint8
+	Type uint8
+}
+
 var TCP_MSS = []byte{0x02, 0x04, 0x05, 0xb4}
 
 func htons(u uint16) uint16 {
@@ -26,14 +35,11 @@ func htons(u uint16) uint16 {
 }
 
 type TCPoolv4 struct {
-	inChan	  	chan string
+	inChan	  	chan []byte
 	outTcpTgtChan  chan string
 	outTcpRealChan chan string
 	outTcpPortChan chan uint16
-	outIcmpTgtChan chan string
-	outIcmpRealChan chan string
-	outIcmpResChan chan string
-	outIcmpPortChan chan uint16
+	outIcmpChan chan *ICMPResponse
 	srcIpStr	string
 	localPort	uint16
 	remotePort  uint16
@@ -68,14 +74,11 @@ func NewTCPoolv4(remotePort uint16, bufSize int, localPort uint16, iface, srcIpS
 	ipv4Cks += uint32(binary.BigEndian.Uint16(srcIp.To4()[2:4]))
 
 	p := &TCPoolv4{
-		inChan: 		make(chan string, bufSize),
+		inChan: 		make(chan []byte, bufSize),
 		outTcpTgtChan: 	make(chan string, bufSize),
 		outTcpRealChan:	make(chan string, bufSize),
 		outTcpPortChan: make(chan uint16, bufSize),
-		outIcmpTgtChan: make(chan string, bufSize),
-		outIcmpRealChan: make(chan string, bufSize),
-		outIcmpResChan: make(chan string, bufSize),
-		outIcmpPortChan: make(chan uint16, bufSize),
+		outIcmpChan:    make(chan *ICMPResponse, bufSize),
 		srcIpStr: 		srcIpStr,
 		localPort: 		localPort,
 		remotePort: 	remotePort,
@@ -94,7 +97,7 @@ func NewTCPoolv4(remotePort uint16, bufSize int, localPort uint16, iface, srcIpS
 }
 
 func (p *TCPoolv4) LenInChan() int { return len(p.inChan) }
-func (p *TCPoolv4) Add(dstIpStr string) { p.inChan <- dstIpStr }
+func (p *TCPoolv4) Add(dstIp []byte) { p.inChan <- dstIp }
 
 func (p *TCPoolv4) GetTcp() (string, string, uint16) { 
 	select {
@@ -104,12 +107,12 @@ func (p *TCPoolv4) GetTcp() (string, string, uint16) {
 		return "", "", 0
 	}
 }
-func (p *TCPoolv4) GetIcmp() (string, string, string, uint16) { 
+func (p *TCPoolv4) GetIcmp() *ICMPResponse { 
 	select {
-	case target := <- p.outIcmpTgtChan:
-		return target, <- p.outIcmpRealChan, <- p.outIcmpResChan, <- p.outIcmpPortChan
+	case icmpRes := <- p.outIcmpChan:
+		return icmpRes
 	case <- time.After(time.Second):
-		return "", "", "", 0
+		return nil
 	}
 }
 
@@ -184,9 +187,8 @@ func (p *TCPoolv4) send() {
 	pkt  = append(pkt, tcpHdr...)
 
 	for {
-		dstIpStr := <- p.inChan
-		if dstIpStr == "" { break }
-		dstIp := net.ParseIP(dstIpStr).To4()
+		dstIp := <- p.inChan
+		if dstIp == nil { break }
 		ipv4Cks, tcpCks := p.calCks(dstIp)
 
 		// Complete IP Header
@@ -254,16 +256,18 @@ func (p *TCPoolv4) recvIcmp() {
 		if p.finish { break }
 
 		if buf[31] != IPV4_HDR_SIZE + TCP_HDR_SIZE || buf[37] != syscall.IPPROTO_TCP || buf[20] != 11 || buf[21] != 0 { continue }
-		// if (buf[48] == buf[46] && buf[49] == buf[47]) && (buf[32] != buf[44] || buf[33] != buf[45]) { continue }
-		remotePort := binary.BigEndian.Uint16(buf[50:52])
-		p.outIcmpTgtChan <- net.IP(buf[52:56]).String()
-		p.outIcmpRealChan <- net.IP(buf[44:48]).String()
-		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
-		p.outIcmpPortChan <- remotePort
+		p.outIcmpChan <- &ICMPResponse{
+			Target: net.IP(buf[52:56]).String(),
+			Real: net.IP(buf[44:48]).String(),
+			Res: net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String(),
+			Port: binary.BigEndian.Uint16(buf[50:52]),
+			Type: buf[20],
+			Code: buf[21],
+		}
 	}
 }
 
 func (p *TCPoolv4) Finish() {
-	p.Add("")
+	p.Add(nil)
 	p.finish = true
 }

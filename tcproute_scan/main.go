@@ -7,13 +7,15 @@ import (
 
 var (
 	iface = flag.String("iface", "", "The interface used for DNSRoute.")
-	startTTL = flag.Int("s", 5, "Start TTL.")
-	endTTL = flag.Int("e", 40, "End TTL.")
+	startTtl = flag.Int("s", 5, "Start TTL.")
+	endTtl = flag.Int("e", 50, "End TTL.")
 	inputFile = flag.String("i", "", "Input file for scanning.")
 	outputFile = flag.String("o", "", "Output file.")
 	pps = flag.Int("pps", 10000, "Sending rate PPS.")
 	dstMacStr = flag.String("dmac", "", "The mac address of router.")
 	remotePort = flag.Uint("r", 80, "The remote port used for sending TCP SYN.")
+	nTot = flag.Uint64("n", 3702258688, "The number of ip addresses will be sent.")
+	nSeg = flag.Uint64("nseg", 10000000, "The number of addresses scannned in batch.")
 )
 
 func main() {
@@ -29,5 +31,9 @@ func main() {
 	dstMac, err := net.ParseMAC(*dstMacStr)
 	if err != nil { panic(err) }
 	
-	TCPRouteScan(srcIpStr, *iface, *inputFile, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, srcMac, dstMac, uint16(*remotePort))
+	if *inputFile == "" {
+		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, uint8(*startTtl), uint8(*endTtl), *pps, *nSeg, *nTot, srcMac, dstMac, uint16(*remotePort))
+	} else {
+		TCPRouteScan(srcIpStr, *iface, *inputFile, *outputFile, uint8(*startTtl), uint8(*endTtl), *pps, srcMac, dstMac, uint16(*remotePort))
+	}
 }
