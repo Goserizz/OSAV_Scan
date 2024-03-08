@@ -109,15 +109,32 @@ func TCPRouteScan(srcIpStr, iface, inputFile, outputFile string, startTtl, endTt
 	}
 }
 
-func TCPRouteScanWithForwarder(srcIpStr, iface, outDir string, startTtl, endTtl uint8, pps int, nSeg, nTot uint64, srcMac, dstMac []byte, remotePort uint16) {
-	os.RemoveAll(outDir)
-	os.Mkdir(outDir, 0755)
+func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startTtl, endTtl uint8, pps int, startFileNo, nSeg, nTot uint64, srcMac, dstMac []byte, remotePort uint16) {
+	if startFileNo == 0{
+		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
+			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				response := scanner.Text()
+				if strings.ToLower(response) == "y" {
+					os.RemoveAll(outDir)
+				} else {
+					os.Exit(0)
+				}
+			}
+		}
+		os.Mkdir(outDir, 0755)
+	}
 
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
-	ipDecStart := uint64(1)
 	ipDec := uint64(1)
-	fileNo := 0
-	for seg := uint64(0); seg < nTot; seg += nSeg {
+	fileNo := startFileNo
+	for i := uint64(0); i < fileNo * nSeg; i ++ {
+		ipDec = (ipDec * 3) % PRIME
+		if ipDec >= IPNUM || IsBogon(ipDec) { continue }
+	}
+	ipDecStart := ipDec
+	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
 		icmpFile := filepath.Join(outDir, fmt.Sprintf("icmp-%d.txt", fileNo))
 		tcpFile := filepath.Join(outDir, fmt.Sprintf("tcp-%d.txt", fileNo))
 		file, err := os.Create(icmpFile)
@@ -136,7 +153,7 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir string, startTtl, endTtl 
 		tfSet := make(map[string]bool)
 		for ttl := endTtl; ttl >= startTtl; ttl-- {
 			finish := false
-			p := NewTCPoolv4Fast(remotePort, BUF_SIZE, LOCAL_PORT, iface, srcIpStr, srcMac, dstMac, ttl)
+			p := NewTCPoolv4Fast(remotePort, BUF_SIZE, LOCAL_PORT, iface, srcIpStr, srcMac, dstMac, ttl, blockFile)
 			go func() {
 				ipDec = ipDecStart
 				counter := seg

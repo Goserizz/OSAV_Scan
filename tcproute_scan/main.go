@@ -16,6 +16,8 @@ var (
 	remotePort = flag.Uint("r", 80, "The remote port used for sending TCP SYN.")
 	nTot = flag.Uint64("n", 3702258688, "The number of ip addresses will be sent.")
 	nSeg = flag.Uint64("nseg", 10000000, "The number of addresses scannned in batch.")
+	blockFile = flag.String("b", "blocklist.txt", "Do not receive packets from these IPs.")
+	startFileNo = flag.Uint64("no", 0, "The No. of file start from.")
 )
 
 func main() {
@@ -32,7 +34,7 @@ func main() {
 	if err != nil { panic(err) }
 	
 	if *inputFile == "" {
-		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, uint8(*startTtl), uint8(*endTtl), *pps, *nSeg, *nTot, srcMac, dstMac, uint16(*remotePort))
+		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, *blockFile, uint8(*startTtl), uint8(*endTtl), *pps, *startFileNo, *nSeg, *nTot, srcMac, dstMac, uint16(*remotePort))
 	} else {
 		TCPRouteScan(srcIpStr, *iface, *inputFile, *outputFile, uint8(*startTtl), uint8(*endTtl), *pps, srcMac, dstMac, uint16(*remotePort))
 	}
