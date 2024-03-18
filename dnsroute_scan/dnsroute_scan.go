@@ -248,6 +248,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		scanner := bufio.NewScanner(icmpF)
 		for scanner.Scan() {
 			ipStrSet[strings.Split(scanner.Text(), ",")[0]] = true
+			ipStrSet[strings.Split(scanner.Text(), ",")[1]] = true
 		}
 		icmpF.Close()
 
