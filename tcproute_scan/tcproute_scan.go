@@ -226,7 +226,7 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 					if finish {
 						break
 					}
-				} else if targetIp != realIp {
+				} else {
 					Append1Addr6ToFS(tcpFile, targetIp+","+realIp+",TCP")
 				}
 			}
@@ -238,7 +238,7 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 					if finish {
 						break
 					}
-				} else if icmpRes.Target != icmpRes.Real && icmpRes.Real == icmpRes.Res {
+				} else {
 					Append1Addr6ToFS(tcpFile, icmpRes.Target+","+icmpRes.Res+fmt.Sprintf(",ICMP%d-%d", icmpRes.Type, icmpRes.Code))
 				}
 			}

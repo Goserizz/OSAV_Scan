@@ -260,7 +260,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 					if finish {
 						break
 					}
-				} else if targetIp != realIp {
+				} else {
 					Append1Addr6ToFS(dnsFile, targetIp+","+realIp+",DNS")
 				}
 			}
@@ -272,7 +272,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 					if finish {
 						break
 					}
-				} else if icmpRes.Target != icmpRes.Real && icmpRes.Real == icmpRes.Res {
+				} else {
 					Append1Addr6ToFS(dnsFile, icmpRes.Target+","+icmpRes.Res+fmt.Sprintf(",ICMP%d-%d", icmpRes.Type, icmpRes.Code))
 				}
 			}
