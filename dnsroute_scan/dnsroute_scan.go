@@ -245,7 +245,6 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		reIcmpFile := filepath.Join(outDir, fmt.Sprintf("re-icmp-%d.txt", fileNo))
 		file, err = os.Create(reIcmpFile)
 		if err != nil { panic(err) } else { file.Close() }
-		tfSet = make(map[string]bool)
 		for ttl := endTtl; ttl >= startTtl; ttl -- {
 			finish := false
 			p := NewDNSPool(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
@@ -266,10 +265,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 						if finish {
 							break
 						}
-					} else if targetIp != realIp {
-						Append1Addr6ToFS(reIcmpFile, targetIp + "," + realIp + "," + resIp + "," + fmt.Sprintf("%d", ttl))
-						tfSet[targetIp] = true
-					} else if tfSet[targetIp] {
+					} else if _, ok := trueTfSet[targetIp]; ok {
 						Append1Addr6ToFS(reIcmpFile, targetIp + "," + realIp + "," + resIp + "," + fmt.Sprintf("%d", ttl))
 					}
 				}
