@@ -7,7 +7,7 @@ import (
 
 var (
 	iface = flag.String("iface", "", "The interface used for DNSRoute.")
-	startTtl = flag.Int("s", 5, "Start TTL.")
+	startTtl = flag.Int("s", 2, "Start TTL.")
 	endTtl = flag.Int("e", 50, "End TTL.")
 	inputFile = flag.String("i", "", "Input file for scanning.")
 	outputFile = flag.String("o", "", "Output file.")
