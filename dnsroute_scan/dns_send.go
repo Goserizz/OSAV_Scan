@@ -220,7 +220,6 @@ func (p *DNSPool) recvIcmp() {
 		if err != nil { panic(err) }
 		if p.finish { break }
 		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
-		if (buf[48] == buf[46] && buf[49] == buf[47]) && (buf[32] != buf[44] || buf[33] != buf[45]) { continue }
 		p.outIcmpTargetChan <- net.IPv4(buf[32], buf[33], buf[48], buf[49]).String()
 		p.outIcmpRealChan <- net.IP(buf[44:48]).String()
 		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
