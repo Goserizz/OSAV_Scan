@@ -1,28 +1,28 @@
 package main
 
 import (
-	"context"
 	"bufio"
-	"net"
-	"strings"
+	"context"
+	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
-	"path/filepath"
-	"encoding/binary"
 
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/time/rate"
 )
 
 const (
-	LOCAL_PORT         = 37300
-	BUF_SIZE           = 100000
-	BURST              = 10000
-	PRIME       uint64 = 4294967311
-	IPNUM       uint64 = 4294967296
-	LOG_INTV           = 10000
+	LOCAL_PORT        = 37300
+	BUF_SIZE          = 100000
+	BURST             = 10000
+	PRIME      uint64 = 4294967311
+	IPNUM      uint64 = 4294967296
+	LOG_INTV          = 10000
 )
 
 func TCPRouteScan(srcIpStr, iface, inputFile, outputFile string, startTtl, endTtl uint8, pps int, srcMac, dstMac []byte, remotePort uint16) {
@@ -70,14 +70,18 @@ func TCPRouteScan(srcIpStr, iface, inputFile, outputFile string, startTtl, endTt
 						break
 					}
 				} else {
-					if icmpRes.Type != 11 { continue }
+					if icmpRes.Type != 11 {
+						continue
+					}
 					if _, ok := testIps.Load(icmpRes.Target); !ok {
 						continue
 					}
 					if icmpRes.Target != icmpRes.Real {
-						Append1Addr6ToFS(outputFile, icmpRes.Target + "," + icmpRes.Real + "," + icmpRes.Res)
+						Append1Addr6ToFS(outputFile, icmpRes.Target+","+icmpRes.Real+","+icmpRes.Res)
 						tfSet[icmpRes.Target] = true
-					} else if tfSet[icmpRes.Target] { Append1Addr6ToFS(outputFile, icmpRes.Target + "," + icmpRes.Real + "," + icmpRes.Res) }
+					} else if tfSet[icmpRes.Target] {
+						Append1Addr6ToFS(outputFile, icmpRes.Target+","+icmpRes.Real+","+icmpRes.Res)
+					}
 				}
 			}
 		}()
@@ -110,7 +114,7 @@ func TCPRouteScan(srcIpStr, iface, inputFile, outputFile string, startTtl, endTt
 }
 
 func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startTtl, endTtl uint8, pps int, startFileNo, nSeg, nTot uint64, srcMac, dstMac []byte, remotePort uint16) {
-	if startFileNo == 0{
+	if startFileNo == 0 {
 		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
 			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
 			scanner := bufio.NewScanner(os.Stdin)
@@ -129,9 +133,11 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
 	ipDec := uint64(1)
 	fileNo := startFileNo
-	for i := uint64(0); i < fileNo * nSeg; i ++ {
+	for i := uint64(0); i < fileNo*nSeg; i++ {
 		ipDec = (ipDec * 3) % PRIME
-		if ipDec >= IPNUM || IsBogon(ipDec) { continue }
+		if ipDec >= IPNUM || IsBogon(ipDec) {
+			continue
+		}
 	}
 	ipDecStart := ipDec
 	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
@@ -201,13 +207,59 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 			}
 			p.Finish()
 		}
+
+		// re-traceroute
+		fmt.Println("Re-tracerouting...")
+		time.Sleep(10 * time.Second)
+		ipDec = ipDecStart
+		trueTfSet := make(map[string]bool)
+		for i := uint64(0); i < nSeg; i ++ {
+			ipDec = (ipDec * 3) % PRIME
+			if ipDec >= IPNUM || IsBogon(ipDec) { continue }
+			dstIp := make([]byte, 4)
+			binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
+			dstIpStr := net.IP(dstIp).String()
+			if _, ok := tfSet[dstIpStr]; ok { trueTfSet[dstIpStr] = true }
+		}
+
+		reIcmpFile := filepath.Join(outDir, fmt.Sprintf("re-icmp-%d.txt", fileNo))
+		file, err = os.Create(reIcmpFile)
+		if err != nil { panic(err) } else { file.Close() }
+		for ttl := endTtl; ttl >= startTtl; ttl -- {
+			finish := false
+			p := NewTCPoolv4Fast(remotePort, BUF_SIZE, LOCAL_PORT, iface, srcIpStr, srcMac, dstMac, ttl, blockFile)
+			go func() {  // send
+				for dstIpStr := range trueTfSet {
+					dstIp := net.ParseIP(dstIpStr).To4()
+					limiter.Wait(context.TODO())
+					p.Add(dstIp)
+				}
+				time.Sleep(5 * time.Second)
+				finish = true
+			}()
+
+			go func() {  // recv
+				for {
+					targetIp, realIp, resIp, _ := p.GetIcmp()
+					if targetIp == "" {
+						if finish { break }
+					} else if _, ok := trueTfSet[targetIp]; ok {
+						Append1Addr6ToFS(reIcmpFile, targetIp + "," + realIp + "," + resIp + "," + fmt.Sprintf("%d", ttl))
+					}
+				}
+			}()
+
+			for !finish { time.Sleep(time.Second) }
+			p.Finish()
+		}
+
 		ipDecStart = ipDec
 		fileNo += 1
 
 		// TCP
 		finish := false
 		ipStrSet := make(map[string]bool)
-		icmpF, err := os.Open(icmpFile)
+		icmpF, err := os.Open(reIcmpFile)
 		if err != nil {
 			panic(err)
 		}
