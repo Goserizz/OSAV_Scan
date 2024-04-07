@@ -6,20 +6,21 @@ import (
 )
 
 var (
-	iface      = flag.String("iface", "", "The interface used for DNSRoute.")
-	startTTL   = flag.Int("s", 2, "Start TTL.")
-	endTTL     = flag.Int("e", 50, "End TTL.")
-	inputFile  = flag.String("i", "", "Input file for scanning.")
-	outputFile = flag.String("o", "", "Output file.")
-	natFile    = flag.String("nat", "", "Output file for SNAT.")
-	dnsFile    = flag.String("d", "", "Output file for DNS response without transparent forwarding.")
-	pps        = flag.Int("pps", 200000, "Sending rate PPS.")
-	dstMacStr  = flag.String("dmac", "", "The mac address of router.")
-	nTot       = flag.Uint64("n", 3702258688, "The number of ip addresses will be sent.")
-	nSend      = flag.Int("nsend", 1, "The number of senders.")
-	nSeg       = flag.Uint64("nseg", 0, "The number of addresses scannned in batch.")
-	shards     = flag.Uint64("shards", 0, "The bits used for scanning id.")
-	shard      = flag.Uint64("shard", 0, "The scanning id used for this scan.")
+	iface       = flag.String("iface", "", "The interface used for DNSRoute.")
+	startTTL    = flag.Int("s", 2, "Start TTL.")
+	endTTL      = flag.Int("e", 50, "End TTL.")
+	inputFile   = flag.String("i", "", "Input file for scanning.")
+	outputFile  = flag.String("o", "", "Output file.")
+	natFile     = flag.String("nat", "", "Output file for SNAT.")
+	dnsFile     = flag.String("d", "", "Output file for DNS response without transparent forwarding.")
+	pps         = flag.Int("pps", 200000, "Sending rate PPS.")
+	dstMacStr   = flag.String("dmac", "", "The mac address of router.")
+	nTot        = flag.Uint64("n", 3702258688, "The number of ip addresses will be sent.")
+	nSend       = flag.Int("nsend", 1, "The number of senders.")
+	nSeg        = flag.Uint64("nseg", 0, "The number of addresses scannned in batch.")
+	shards      = flag.Uint64("shards", 0, "The bits used for scanning id.")
+	shard       = flag.Uint64("shard", 0, "The scanning id used for this scan.")
+	startFileNo = flag.Uint64("no", 0, "The No. of file start from.")
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 	} else if *nSeg == 0 {
 		DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nTot)
 	} else {
-		DNSRouteScanWithForwarder(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nSeg, *nTot, *shards, *shard)
+		DNSRouteScanWithForwarder(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *startFileNo, *nSeg, *nTot, *shards, *shard)
 	}
 
 }

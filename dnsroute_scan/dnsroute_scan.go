@@ -160,17 +160,32 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile strin
 	}
 }
 
-func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, nSeg, nTot uint64, shards, shard uint64) {
-	os.RemoveAll(outDir)
-	os.Mkdir(outDir, 0755)
+func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, startFileNo, nSeg, nTot uint64, shards, shard uint64) {
+	if startFileNo == 0 {
+		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
+			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				response := scanner.Text()
+				if strings.ToLower(response) == "y" {
+					os.RemoveAll(outDir)
+				} else {
+					os.Exit(0)
+				}
+			}
+		}
+		os.Mkdir(outDir, 0755)
+	}
 
 	shards_mask := uint64((1 << shards) - 1)
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
-	ipDecStart := uint64(1)
 	ipDec := uint64(1)
-	fileNo := 0
-	bar := progressbar.Default(int64(nTot) * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
-	for seg := uint64(0); seg < nTot; seg += nSeg {
+	fileNo := startFileNo
+	for i := uint64(0); i < fileNo * nSeg; i ++ { ipDec = (ipDec * 3) % PRIME }
+	ipDecStart := ipDec
+
+	bar := progressbar.Default(int64(nTot) * int64(endTtl - startTtl + 1) - int64(fileNo * nSeg) * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
+	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
 		icmpFile := filepath.Join(outDir, fmt.Sprintf("icmp-%d.txt", fileNo))
 		dnsFile := filepath.Join(outDir, fmt.Sprintf("dns-%d.txt", fileNo))
 		file, err := os.Create(icmpFile)
