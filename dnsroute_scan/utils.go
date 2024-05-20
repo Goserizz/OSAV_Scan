@@ -85,6 +85,7 @@ func readName(buffer []byte, offset int) (string, int) {
 
 	// 循环读取name字段的各个部分
 	for {
+		if offset > len(buffer) { break }
 		// 读取长度
 		length := int(buffer[offset])
 		offset++
@@ -98,6 +99,7 @@ func readName(buffer []byte, offset int) (string, int) {
 		if length >= 0xC0 {
 			// 遇到偏移量，需要跳转到偏移量指向的位置继续读取
 			nextOffset := int(binary.BigEndian.Uint16([]byte{buffer[offset-1], buffer[offset]})) & 0x3FFF
+			if nextOffset <= offset { break }
 			part, _ := readName(buffer, nextOffset)
 			name += part
 			bytesRead++
