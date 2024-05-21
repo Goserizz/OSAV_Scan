@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 	"bytes"
-	"strings"
+	// "strings"
 	"syscall"
 	"encoding/binary"
 )
@@ -97,7 +97,8 @@ func (p *DNSPoolTtl) send() {
 	ipv4Hdr[0] = 0x45  // Vesrion = 4 | header length = 5
 	// [1]	 TOS
 	// [2] [3] Total length
-	binary.BigEndian.PutUint16(ipv4Hdr[2:4], IPV4_LEN)
+	// binary.BigEndian.PutUint16(ipv4Hdr[2:4], IPV4_LEN)
+	binary.BigEndian.PutUint16(ipv4Hdr[2:4], 70)
 	// [4] [5] Identification
 	// [6] [7] Flags | Fragment offset
 	// [8]     TTL
@@ -110,48 +111,49 @@ func (p *DNSPoolTtl) send() {
 	udpHdrBuf := new(bytes.Buffer)
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // local port
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(53))  // remote port
-	binary.Write(udpHdrBuf, binary.BigEndian, uint16(UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE))  // length
+	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // length
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // checksum
 	udpHdr := udpHdrBuf.Bytes()
 
 	// Construct DNS Header
-	dnsHdrBuf := new(bytes.Buffer)
-	var flags uint16 = 0x0100  // recursive
-	var qdcount uint16 = 3   // # Queries
-	var ancount, nscount, arcount uint16 = 0, 0, 0  //  Answer, Authoritive, Addition
-	binary.Write(dnsHdrBuf, binary.BigEndian, TRANSACTION_ID)
-	binary.Write(dnsHdrBuf, binary.BigEndian, flags)
-	binary.Write(dnsHdrBuf, binary.BigEndian, qdcount)
-	binary.Write(dnsHdrBuf, binary.BigEndian, ancount)
-	binary.Write(dnsHdrBuf, binary.BigEndian, nscount)
-	binary.Write(dnsHdrBuf, binary.BigEndian, arcount)
-	dnsHdr := dnsHdrBuf.Bytes()
+	// dnsHdrBuf := new(bytes.Buffer)
+	// var flags uint16 = 0x0100  // recursive
+	// var qdcount uint16 = 3   // # Queries
+	// var ancount, nscount, arcount uint16 = 0, 0, 0  //  Answer, Authoritive, Addition
+	// binary.Write(dnsHdrBuf, binary.BigEndian, TRANSACTION_ID)
+	// binary.Write(dnsHdrBuf, binary.BigEndian, flags)
+	// binary.Write(dnsHdrBuf, binary.BigEndian, qdcount)
+	// binary.Write(dnsHdrBuf, binary.BigEndian, ancount)
+	// binary.Write(dnsHdrBuf, binary.BigEndian, nscount)
+	// binary.Write(dnsHdrBuf, binary.BigEndian, arcount)
+	// dnsHdr := dnsHdrBuf.Bytes()
 
 	// construct DNS Query
-	dnsQryBuf := new(bytes.Buffer)
-	for i := 0; i < 4; i ++ {
-		sections := strings.Split(JD_DOMAIN, ".")
-		for _, s := range sections {
-			binary.Write(dnsQryBuf, binary.BigEndian, byte(len(s)))  // length
-			for _, b := range []byte(s) {
-				binary.Write(dnsQryBuf, binary.BigEndian, b)
-			}
-		}
-		binary.Write(dnsQryBuf, binary.BigEndian, byte(0)) // 0
-		binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // A
-		binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // Internet
-	}
-	dnsQry := dnsQryBuf.Bytes()
+	// dnsQryBuf := new(bytes.Buffer)
+	// for i := 0; i < 1; i ++ {
+	// 	sections := strings.Split(JD_DOMAIN, ".")
+	// 	for _, s := range sections {
+	// 		binary.Write(dnsQryBuf, binary.BigEndian, byte(len(s)))  // length
+	// 		for _, b := range []byte(s) {
+	// 			binary.Write(dnsQryBuf, binary.BigEndian, b)
+	// 		}
+	// 	}
+	// 	binary.Write(dnsQryBuf, binary.BigEndian, byte(0)) // 0
+	// 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // A
+	// 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // Internet
+	// }
+	// dnsQry := dnsQryBuf.Bytes()
 
 	// pre calculate IP header checksum
 	ipv4Cks := uint32(0)
 	for i := 0; i < 20; i += 2 { ipv4Cks += uint32(binary.BigEndian.Uint16(ipv4Hdr[i:i+2])) }
 
-	// Combine IPv6 header, UDP header, DNS header, DNS query
+	// Combine IP header, UDP header, DNS header, DNS query
 	packet := append(macHdr, ipv4Hdr...)
 	packet  = append(packet, udpHdr...)
-	packet  = append(packet, dnsHdr...)
-	packet  = append(packet, dnsQry...)
+	for i := 0; i < 42; i ++ { packet = append(packet, 0) }
+	// packet  = append(packet, dnsHdr...)
+	// packet  = append(packet, dnsQry...)
 
 	var dstIp []byte
 	var ttl uint8
@@ -193,7 +195,7 @@ func (p *DNSPoolTtl) recvIcmp() {
 	err = syscall.Bind(fd, &addr)
 	if err != nil { panic(err) }
 
-	ipv4LenUint8 := uint8(IPV4_LEN)
+	ipv4LenUint8 := uint8(70)
 	ipLowBytes := make([]byte, 2)
 	// 接收ICMP报文
 	for {
