@@ -126,7 +126,7 @@ func (p *DNSPoolSlow) send() {
 
 	// UDP Header
 	udpHdrBuf := new(bytes.Buffer)
-	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // local port
+	binary.Write(udpHdrBuf, binary.BigEndian, uint16(53983))  // local port
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(53))  // remote port
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(UDP_HDR_SIZE + DNS_HDR_SIZE + DNS_QRY_SIZE_SLOW))  // length
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // checksum
@@ -197,21 +197,21 @@ func (p *DNSPoolSlow) send() {
 
 		// Complete IPv4 Header
 		// copy(ipv4Hdr[4:6], dstIp[:2])
-		copy(packet[18:20], dstIp[:2])
+		// copy(packet[18:20], dstIp[:2])
 		// ipv4Hdr[8] = nowTtl
 		// copy(ipv4Hdr[16:20], dstIp.To4())
 		copy(packet[30:34], dstIp)
-		ipv4NowCks := ipv4Cks + dstIpHigh + dstIpHigh + dstIpLow
+		ipv4NowCks := ipv4Cks + dstIpHigh + dstIpLow
 		// for i := 0; i < 4; i += 2 { ipv4NowCks += uint32(binary.BigEndian.Uint16(dstIp[i:i+2])) }
 		// binary.BigEndian.PutUint16(ipv4Hdr[10:12], uint16(^(ipv4NowCks + (ipv4NowCks >> 16))))
 		binary.BigEndian.PutUint16(packet[24:26], uint16(^(ipv4NowCks + (ipv4NowCks >> 16))))
 
 		// Complete UDP Header
-		copy(packet[34:36], dstIp[2:4])
+		// copy(packet[34:36], dstIp[2:4])
 		copy(dstIpStrBytes[1:], []byte(FormatIpv4(dstIpStr)))
-		udpNowCks := udpCks + dstIpHigh + dstIpLow + dstIpLow
-		for i := 0; i < len(dstIpStrBytes); i += 2 { udpNowCks += uint32(binary.BigEndian.Uint16(dstIpStrBytes[i:i+2])) }
-		binary.BigEndian.PutUint16(packet[40:42], uint16(^(udpNowCks + (udpNowCks >> 16))))
+		// udpNowCks := udpCks + dstIpHigh + dstIpLow
+		// for i := 0; i < len(dstIpStrBytes); i += 2 { udpNowCks += uint32(binary.BigEndian.Uint16(dstIpStrBytes[i:i+2])) }
+		// binary.BigEndian.PutUint16(packet[40:42], uint16(^(udpNowCks + (udpNowCks >> 16))))
 
 		// Complete DNS Query
 		copy(packet[62:], dstIpStrBytes)
