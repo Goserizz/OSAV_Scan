@@ -11,14 +11,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func FirstHopScan(srcIpStr, ifaceName, inputFile, outputFile string, startTtl, endTtl uint8, pps int, srcMac, dstMac []byte) {
+func FirstHopScan(srcIpStr, ifaceName, inputFile, outputFile, dnsFile string, startTtl, endTtl uint8, pps int, srcMac, dstMac []byte) {
 	os.Remove(outputFile)
+	os.Remove(dnsFile)
 	dstIpStrArr := ReadLineAddr6FromFS(inputFile)
-	bar := progressbar.Default(int64(len(dstIpStrArr)) * int64(endTtl-startTtl+1) * 2, "Scanning Normal...")
 	limiter := rate.NewLimiter(rate.Limit(pps), pps)
 
 	finish := false
 	pNormal := NewDNSPoolNormal(srcIpStr, ifaceName, srcMac, dstMac)
+	pSpoof := NewDNSPoolSpoof(srcIpStr, ifaceName, srcMac, dstMac)
 	go func() {
 		for {
 			targetIp, res, ttl := pNormal.GetIcmp()
@@ -29,6 +30,18 @@ func FirstHopScan(srcIpStr, ifaceName, inputFile, outputFile string, startTtl, e
 			}
 		}
 	}()
+	go func() {
+		for {
+			targetIp, res, ttl := pNormal.GetDns()
+			if targetIp != "" {
+				Append1Addr6ToFS(dnsFile, fmt.Sprintf("%s,%s,%d", targetIp, res, ttl))
+			} else if finish {
+				break
+			}
+		}
+	}()
+
+	bar := progressbar.Default(int64(len(dstIpStrArr)) * int64(endTtl-startTtl+1) * 2, "Scanning Normal...")
 	for ttl := startTtl; ttl <= endTtl; ttl++ {
 		for i, dstIpStr := range dstIpStrArr {
 			if (i + 1) % LOG_INTV == 0 {
@@ -43,7 +56,6 @@ func FirstHopScan(srcIpStr, ifaceName, inputFile, outputFile string, startTtl, e
 	time.Sleep(10 * time.Second)
 	finish = true
 
-	pSpoof := NewDNSPoolSpoof(srcIpStr, ifaceName, srcMac, dstMac)
 	for ttl := startTtl; ttl <= endTtl; ttl++ {
 		for i, dstIpStr := range dstIpStrArr {
 			if (i + 1) % LOG_INTV == 0 {
@@ -56,4 +68,5 @@ func FirstHopScan(srcIpStr, ifaceName, inputFile, outputFile string, startTtl, e
 		}
 	}
 	bar.Finish()
+	time.Sleep(10 * time.Second)
 }

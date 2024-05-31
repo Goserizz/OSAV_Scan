@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"strings"
 	"syscall"
+	"strconv"
 	"encoding/binary"
 )
 
@@ -16,6 +17,9 @@ type DNSPoolNormal struct {
 	outIcmpTargetChan chan string
 	outIcmpResChan    chan string
 	outIcmpTtlChan    chan uint8
+	outDnsTargetChan  chan string
+	outDnsTtlChan     chan uint8
+	outDnsResChan     chan string
 	srcIpStr          string
 	ifaceName         string
 	srcMac            []byte
@@ -30,6 +34,9 @@ func NewDNSPoolNormal(srcIpStr string, ifaceName string, srcMac, dstMac []byte) 
 		outIcmpTargetChan: make(chan string, BUF_SIZE),
 		outIcmpResChan: make(chan string, BUF_SIZE),
 		outIcmpTtlChan: make(chan uint8, BUF_SIZE),
+		outDnsTargetChan: make(chan string, BUF_SIZE),
+		outDnsTtlChan: make(chan uint8, BUF_SIZE),
+		outDnsResChan: make(chan string, BUF_SIZE),
 		srcIpStr: srcIpStr,
 		ifaceName: ifaceName,
 		srcMac: srcMac,
@@ -38,6 +45,7 @@ func NewDNSPoolNormal(srcIpStr string, ifaceName string, srcMac, dstMac []byte) 
 	}
 	go dnsPool.send()
 	go dnsPool.recvIcmp()
+	go dnsPool.recvDns()
 	return dnsPool
 }
 
@@ -50,6 +58,15 @@ func (p *DNSPoolNormal) GetIcmp() (string, string, uint8) {
 	select {
 		case targetIp := <- p.outIcmpTargetChan:
 			return targetIp, <- p.outIcmpResChan, <- p.outIcmpTtlChan
+		case <-time.After(time.Second):
+			return "", "", 0
+	}
+}
+
+func (p *DNSPoolNormal) GetDns() (string, string, uint8) {
+	select {
+		case targetIp := <- p.outDnsTargetChan:
+			return targetIp, <- p.outDnsResChan, <- p.outDnsTtlChan
 		case <-time.After(time.Second):
 			return "", "", 0
 	}
@@ -198,6 +215,45 @@ func (p *DNSPoolNormal) recvIcmp() {
 		p.outIcmpTargetChan <- net.IP(buf[44:48]).String()
 		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 		p.outIcmpTtlChan <- uint8(binary.BigEndian.Uint16(buf[48:50]) - BASE_PORT)
+	}
+}
+
+func (p *DNSPoolNormal) recvDns() {
+	// 创建原始套接字
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
+	if err != nil { panic(err) }
+	defer syscall.Close(fd)
+
+	laddr := &syscall.SockaddrInet4{}
+	copy(laddr.Addr[:], net.ParseIP(p.srcIpStr))
+	err = syscall.Bind(fd, laddr)
+	if err != nil {
+		panic(err)
+	}
+
+	domainLen := RAND_LEN + 1 + TTL_LEN + 1 + IPV4_ENCODE_LEN + 1 + IS_NORMAL_LEN + 1 + len(BASE_DOMAIN) + 1
+
+	// Read packets
+	for {
+		buf := make([]byte, 1500)
+		_, addr, err := syscall.Recvfrom(fd, buf, 0)
+		if err != nil { panic(err) }
+		if p.finish { break }
+
+		txId := binary.BigEndian.Uint16(buf[28:30])
+		if txId != TRANSACTION_ID { continue }
+
+		dnsPacket := buf[28:]
+		question, _ := ParseDNSQuestion(dnsPacket, 12)
+		if len(question.Name) == 0 { continue }
+		if len(question.Name) != domainLen { continue }
+		ttl, err := strconv.Atoi(question.Name[RAND_LEN + 1:][:TTL_LEN])
+		if err != nil { continue }
+		ipStr, err := hexToIp(question.Name[RAND_LEN + 1 + TTL_LEN + 1:][:IPV4_ENCODE_LEN])
+		if err != nil { continue }
+		p.outDnsTargetChan <- ipStr
+		p.outDnsTtlChan <- uint8(ttl)
+		p.outDnsResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
 	}
 }
 

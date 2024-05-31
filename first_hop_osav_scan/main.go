@@ -11,6 +11,7 @@ var (
 	endTTL      = flag.Int("e", 40, "End TTL.")
 	inputFile   = flag.String("i", "", "Input file for scanning.")
 	outputFile  = flag.String("o", "", "Output file.")
+	dnsFile     = flag.String("d", "", "DNS file.")
 	pps         = flag.Int("pps", 10000, "Sending rate PPS.")
 	dstMacStr   = flag.String("dmac", "", "The mac address of router.")
 )
@@ -34,5 +35,5 @@ func main() {
 		panic(err)
 	}
 
-	FirstHopScan(srcIpStr, *iface, *inputFile, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, srcMac, dstMac)
+	FirstHopScan(srcIpStr, *iface, *inputFile, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps, srcMac, dstMac)
 }

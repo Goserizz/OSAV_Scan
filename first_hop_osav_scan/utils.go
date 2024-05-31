@@ -20,14 +20,16 @@ func ipToHex(ip []byte) string {
 	return fmt.Sprintf("%02x%02x%02x%02x", ip[0], ip[1], ip[2], ip[3])
 }
 
-// a function transform a hex string to an IPv4 address
-func hexToIp(hexString string) []byte {
-	decoded, err := hex.DecodeString(hexString)
-	if err != nil {
-		fmt.Println("解码错误:", err)
-		return nil
-	}
-	return decoded
+// a function transform a hex string to an IPv4 address string
+func hexToIp(hexStr string) (string, error) {
+    ip, err := hex.DecodeString(hexStr)
+    if err != nil {
+        return "", err
+    }
+    if len(ip) < 4 {
+        return "", errors.New("invalid IP length")
+    }
+    return fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]), nil
 }
 
 func ReadLineAddr6FromFS(filename string) []string {
