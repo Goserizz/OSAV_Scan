@@ -8,10 +8,29 @@ import (
 	"bufio"
 	"errors"
 	"strings"
+	"math/rand"
+	"encoding/hex"
 	"encoding/binary"
 
 	"github.com/vishvananda/netlink"
 )
+
+// a function transform an IPv4 address to a hex string
+func ipToHex(ip []byte) string {
+	return fmt.Sprintf("%02x%02x%02x%02x", ip[0], ip[1], ip[2], ip[3])
+}
+
+// a function transform a hex string to an IPv4 address string
+func hexToIp(hexStr string) (string, error) {
+    ip, err := hex.DecodeString(hexStr)
+    if err != nil {
+        return "", err
+    }
+    if len(ip) < 4 {
+        return "", errors.New("invalid IP length")
+    }
+    return fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]), nil
+}
 
 func ReadLineAddr6FromFS(filename string) []string {
 	var strAddrs []string
@@ -254,4 +273,12 @@ func IsBogon(dec_ip uint64) bool {
 		((dec_ip & 0xFFFFFF00) == 0xCB007100) || // 203.0.113.0/24
 		((dec_ip & 0xF0000000) == 0xE0000000) || // 224.0.0.0/4
 		((dec_ip & 0xF0000000) == 0xF0000000) { return true } else {return false}   // 240.0.0.0/4
-  }
+}
+
+func GetDomainRandPfx(randLen int) string {
+	randSuffixBytes := make([]byte, randLen)
+	for i := range randSuffixBytes {
+		randSuffixBytes[i] = CHARS[rand.Intn(len(CHARS))]
+	}
+	return string(randSuffixBytes)
+}
