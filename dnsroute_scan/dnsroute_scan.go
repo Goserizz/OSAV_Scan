@@ -160,8 +160,8 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile strin
 	}
 }
 
-func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, startFileNo, nSeg, nTot uint64, shards, shard uint64) {
-	if startFileNo == 0 {
+func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, startFileNo, nSeg, nTot, shards, shard uint64) {
+	if startFileNo == 0xffffffffffffffff {
 		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
 			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
 			scanner := bufio.NewScanner(os.Stdin)

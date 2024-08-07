@@ -20,7 +20,7 @@ var (
 	nSeg        = flag.Uint64("nseg", 0, "The number of addresses scannned in batch.")
 	shards      = flag.Uint64("shards", 0, "The bits used for scanning id.")
 	shard       = flag.Uint64("shard", 0, "The scanning id used for this scan.")
-	startFileNo = flag.Uint64("no", 0, "The No. of file start from.")
+	startFileNo = flag.Uint64("no", 0xffffffffffffffff, "The No. of file start from.")
 )
 
 func main() {
