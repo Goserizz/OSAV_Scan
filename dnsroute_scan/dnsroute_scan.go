@@ -74,7 +74,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 						continue
 					}
 					if icmpRes.Target != icmpRes.Real || icmpRes.Target == icmpRes.Res {
-						Append1Addr6ToFS(outFile, icmpRes.Target+","+icmpRes.Real+","+icmpRes.Real+","+fmt.Sprintf("%d", ttl))
+						Append1Addr6ToFS(outFile, icmpRes.Target+","+icmpRes.Real+","+icmpRes.Res+","+fmt.Sprintf("%d", ttl))
 					}
 				}
 			}
