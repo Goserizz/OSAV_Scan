@@ -1,8 +1,9 @@
 package main
 
 import (
-	"flag"
+	"fmt"
 	"net"
+	"flag"
 )
 
 var (
@@ -37,10 +38,19 @@ func main() {
 		panic(err)
 	}
 	srcIpStr := srcIpv4Arr[0]
-	dstMac, err := net.ParseMAC(*dstMacStr)
-	if err != nil {
-		panic(err)
+	if *dstMacStr == "" {
+		gatewayIP, err := GetDefaultGateway()
+		if err != nil { panic(err) }
+		fmt.Println("Default Gateway IP:", gatewayIP)
+
+		*dstMacStr, err = GetMACAddress(gatewayIP)
+		if err != nil { panic(err) }
+		fmt.Println("Gateway MAC Address:", *dstMacStr)
 	}
+	dstMac, err := net.ParseMAC(*dstMacStr)
+	if err != nil { panic(err) }
+	
+	if *outputFile == "" { panic("Please specify the output path!") }
 
 	if *inputFile != "" {
 		DNSRouteScan(srcIpStr, *iface, *inputFile, *outputFile, *natFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *nSend, *pps, srcMac, dstMac)
