@@ -175,6 +175,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			}
 		}
 		os.Mkdir(outDir, 0755)
+		startFileNo = 0
 	}
 
 	shards_mask := uint64((1 << shards) - 1)
