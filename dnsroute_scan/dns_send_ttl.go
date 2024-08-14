@@ -69,8 +69,8 @@ func (p *DNSPoolTtl) GetIcmp() (string, string, string, uint8) {
 	}
 }
 
-func (p *DNSPoolTtl) LenInChan() int {
-	return len(p.inIpChan)
+func (p *DNSPoolTtl) LenInChan() (int, int, int) {
+	return len(p.inIpChan), len(p.icmpParseChan), len(p.outIcmpChan)
 }
 
 func (p *DNSPoolTtl) send() {

@@ -205,7 +205,8 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 				for i := uint64(0); i < nSeg; i++ {
 					if (i+1)%LOG_INTV == 0 {
 						bar.Add(LOG_INTV)
-						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d waiting", seg, seg+nSeg, ttl, p.LenInChan()))
+						nIn, nPar, nOut := p.LenInChan()
+						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, ttl, nIn, nPar, nOut))
 					}
 					ipDec = (ipDec * 3) % PRIME
 					if ipDec >= IPNUM || IsBogon(ipDec) || (ipDec & shards_mask) != shard { continue }
