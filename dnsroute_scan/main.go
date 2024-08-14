@@ -29,6 +29,7 @@ func main() {
 	flag.Parse()
 	if *iface == "" {
 		*iface, err = GetDefaultRouteInterface()
+		fmt.Println("Default Interface:", *iface)
 		if err != nil {
 			panic("Please Specify the Interface for DNSRoute.")
 		}
@@ -49,7 +50,7 @@ func main() {
 	}
 	dstMac, err := net.ParseMAC(*dstMacStr)
 	if err != nil { panic(err) }
-	
+
 	if *outputFile == "" { panic("Please specify the output path!") }
 
 	if *inputFile != "" {
