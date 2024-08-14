@@ -13,15 +13,18 @@ const (
 	BASE_PORT uint16 = 50000
 )
 
+type IcmpResp struct {
+	Target string
+	Real   string
+	Res    string
+	Ttl    uint8
+}
+
 type DNSPoolTtl struct {
 	inIpChan          chan []byte
 	inTtlChan         chan uint8
-	outIcmpTargetChan chan string
-	outIcmpRealChan   chan string
-	outIcmpResChan    chan string
-	outIcmpTtlChan    chan uint8
-	outDnsTargetChan  chan string
-	outDnsRealChan    chan string
+	icmpParseChan     chan []byte
+	outIcmpChan       chan IcmpResp
 	srcIpStr          string
 	ifaceName         string
 	srcMac            []byte
@@ -36,12 +39,8 @@ func NewDNSPoolTtl(nSender, bufSize int, srcIpStr string, ifaceName string, srcM
 	dnsPool := &DNSPoolTtl{
 		inIpChan: make(chan []byte, bufSize),
 		inTtlChan: make(chan uint8, bufSize),
-		outIcmpTargetChan: make(chan string, bufSize),
-		outIcmpRealChan: make(chan string, bufSize),
-		outIcmpResChan: make(chan string, bufSize),
-		outIcmpTtlChan: make(chan uint8, bufSize),
-		outDnsTargetChan: make(chan string, bufSize),
-		outDnsRealChan: make(chan string, bufSize),
+		icmpParseChan: make(chan []byte, bufSize),
+		outIcmpChan: make(chan IcmpResp, bufSize),
 		srcIpStr: srcIpStr,
 		ifaceName: ifaceName,
 		srcMac: srcMac,
@@ -51,7 +50,7 @@ func NewDNSPoolTtl(nSender, bufSize int, srcIpStr string, ifaceName string, srcM
 		shards: shards,
 		shard: shard,
 	}
-	for i := 0; i < nSender; i ++ { go dnsPool.send() }
+	for i := 0; i < nSender; i ++ { go dnsPool.send(); go dnsPool.parseIcmp() }
 	go dnsPool.recvIcmp()
 	return dnsPool
 }
@@ -63,8 +62,8 @@ func (p *DNSPoolTtl) Add(dstIp []byte, ttl uint8) {
 
 func (p *DNSPoolTtl) GetIcmp() (string, string, string, uint8) {
 	select {
-		case targetIp := <- p.outIcmpTargetChan:
-			return targetIp, <- p.outIcmpRealChan, <- p.outIcmpResChan, <- p.outIcmpTtlChan
+		case icmpResp := <- p.outIcmpChan:
+			return icmpResp.Target, icmpResp.Real, icmpResp.Res, icmpResp.Ttl
 		case <-time.After(time.Second):
 			return "", "", "", 0
 	}
@@ -101,6 +100,7 @@ func (p *DNSPoolTtl) send() {
 	binary.BigEndian.PutUint16(ipv4Hdr[2:4], 70)
 	// [4] [5] Identification
 	// [6] [7] Flags | Fragment offset
+	ipv4Hdr[6] = 0x40  // Don't fragment
 	// [8]     TTL
 	ipv4Hdr[9] = syscall.IPPROTO_UDP  // Protocol = 17 (UDP)
 	// [10 - 11] Header Checksum
@@ -195,20 +195,30 @@ func (p *DNSPoolTtl) recvIcmp() {
 	err = syscall.Bind(fd, &addr)
 	if err != nil { panic(err) }
 
-	ipv4LenUint8 := uint8(70)
-	ipLowBytes := make([]byte, 2)
 	// 接收ICMP报文
 	for {
 		buf := make([]byte, 1500)
-		_, addr, err := syscall.Recvfrom(fd, buf, 0)
+		_, _, err := syscall.Recvfrom(fd, buf, 0)
 		if err != nil { panic(err) }
+
+		p.icmpParseChan <- buf
 		if p.finish { break }
+	}
+}
+
+func (p *DNSPoolTtl) parseIcmp() {
+	ipv4LenUint8 := uint8(70)
+	ipLowBytes := make([]byte, 2)
+	for {
+		buf := <- p.icmpParseChan
 		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
 		binary.BigEndian.PutUint16(ipLowBytes[0:2], ((binary.BigEndian.Uint16(buf[48:50]) - BASE_PORT) << p.shards) + p.shard)
-		p.outIcmpTargetChan <- net.IPv4(buf[32], buf[33], ipLowBytes[0], ipLowBytes[1]).String()
-		p.outIcmpRealChan <- net.IP(buf[44:48]).String()
-		p.outIcmpResChan <- net.IP(addr.(*syscall.SockaddrInet4).Addr[:]).String()
-		p.outIcmpTtlChan <- buf[53]
+		p.outIcmpChan <- IcmpResp{
+			Target: net.IPv4(buf[32], buf[33], ipLowBytes[0], ipLowBytes[1]).String(),
+			Real: net.IP(buf[44:48]).String(),
+			Res: net.IP(buf[12:16]).String(),
+			Ttl: buf[53],
+		}
 	}
 }
 
