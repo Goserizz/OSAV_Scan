@@ -51,7 +51,7 @@ func NewDNSPoolTtl(nSender, bufSize int, srcIpStr string, ifaceName string, srcM
 		shards: shards,
 		shard: shard,
 	}
-	for i := 0; i < nSender; i ++ { go dnsPool.send() }
+	for i := 0; i < nSender; i ++ { go dnsPool.send(); go dnsPool.parseIcmp()}
 	go dnsPool.recvIcmp()
 	return dnsPool
 }
@@ -195,22 +195,14 @@ func (p *DNSPoolTtl) recvIcmp() {
 	addr := syscall.SockaddrInet4{ Port: 0, Addr: [4]byte{0, 0, 0, 0}, }
 	err = syscall.Bind(fd, &addr)
 	if err != nil { panic(err) }
-
-	ipv4LenUint8 := uint8(70)
-	ipLowBytes := make([]byte, 2)
-	buf := make([]byte, 1500)
+	
 	// 接收ICMP报文
 	for {
+		buf := make([]byte, 1500)
 		_, _, err := syscall.Recvfrom(fd, buf, 0)
 		if err != nil { panic(err) }
 
-		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
-		binary.BigEndian.PutUint16(ipLowBytes[0:2], ((binary.BigEndian.Uint16(buf[48:50]) - BASE_PORT) << p.shards) + p.shard)
-		p.outIcmpChan <- IcmpResp{
-			Target: fmt.Sprintf("%d.%d.%d.%d", buf[32], buf[33], ipLowBytes[0], ipLowBytes[1]),
-			Real: fmt.Sprintf("%d.%d.%d.%d", buf[44], buf[45], buf[46], buf[47]),
-			Ttl: buf[53],
-		}
+		if p.finish { break }
 	}
 }
 
