@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"flag"
 	"net"
@@ -26,10 +27,21 @@ func main() {
 	
 	if *iface == "" {
 		*iface, err = GetDefaultRouteInterface()
+		fmt.Println("Default Interface:", *iface)
 		if err != nil { panic("Please Specify the Interface for DNSRoute.") }
 	}
 	srcIpv4Arr, srcIpv6Arr, srcMac, err := GetIface(*iface)
 	if err != nil { panic(err) }
+
+	if *dstMacStr == "" {
+		gatewayIP, err := GetDefaultGateway()
+		if err != nil { panic(err) }
+		fmt.Println("Default Gateway IP:", gatewayIP)
+
+		*dstMacStr, err = GetMACAddress(gatewayIP)
+		if err != nil { panic(err) }
+		fmt.Println("Gateway MAC Address:", *dstMacStr)
+	}
 	dstIpStr := args[0]
 	dstMac, err := net.ParseMAC(*dstMacStr)
 	if err != nil { panic(err) }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"time"
 	"bytes"
@@ -214,9 +215,8 @@ func (p *DNSPoolTtl) parseIcmp() {
 		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
 		binary.BigEndian.PutUint16(ipLowBytes[0:2], ((binary.BigEndian.Uint16(buf[48:50]) - BASE_PORT) << p.shards) + p.shard)
 		p.outIcmpChan <- IcmpResp{
-			Target: net.IPv4(buf[32], buf[33], ipLowBytes[0], ipLowBytes[1]).String(),
-			Real: net.IP(buf[44:48]).String(),
-			Res: net.IP(buf[12:16]).String(),
+			Target: fmt.Sprintf("%d.%d.%d.%d", buf[32], buf[33], ipLowBytes[0], ipLowBytes[1]),
+			Real: fmt.Sprintf("%d.%d.%d.%d", buf[44], buf[45], buf[46], buf[47]),
 			Ttl: buf[53],
 		}
 	}

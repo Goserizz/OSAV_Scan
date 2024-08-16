@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"net"
+	"bytes"
 	"errors"
 	"strings"
+	"os/exec"
 	"math/rand"
 	"encoding/binary"
 
@@ -187,4 +190,38 @@ func GetIface(interfaceName string) ([]string, []string, []byte, error) {
     }
 
     return ipv4Addrs, ipv6Addrs, iface.HardwareAddr, nil
+}
+
+// 获取默认网关的IP地址
+func GetDefaultGateway() (string, error) {
+	cmd := exec.Command("ip", "route", "show", "default")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	route := strings.Fields(out.String())
+	if len(route) < 3 {
+		return "", fmt.Errorf("unexpected output: %s", out.String())
+	}
+	return route[2], nil
+}
+
+// 获取MAC地址
+func GetMACAddress(ip string) (string, error) {
+	cmd := exec.Command("arp", "-n", ip)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	lines := strings.Split(out.String(), "\n")
+	if len(lines) < 2 {
+		return "", fmt.Errorf("unexpected output: %s", out.String())
+	}
+	fields := strings.Fields(lines[1])
+	if len(fields) < 3 {
+		return "", fmt.Errorf("unexpected output: %s", lines[1])
+	}
+	return fields[2], nil
 }
