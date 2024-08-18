@@ -201,7 +201,7 @@ func (p *DNSPoolTtl) recvIcmp() {
 		buf := make([]byte, 1500)
 		_, _, err := syscall.Recvfrom(fd, buf, 0)
 		if err != nil { panic(err) }
-
+		p.icmpParseChan <- buf
 		if p.finish { break }
 	}
 }
