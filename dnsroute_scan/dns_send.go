@@ -80,12 +80,14 @@ func NewDNSPool(nSender, bufSize int, srcIpStr string, ifaceName string, srcMac,
 }
 
 func (p *DNSPool) Add(dstIp []byte) {
+	if p.finish { return }
 	p.inIpChan <- dstIp
 }
 
 func (p *DNSPool) GetIcmp() (string, string, string) {
 	select {
-	case targetIp := <-p.outIcmpTargetChan:
+	case targetIp, ok := <-p.outIcmpTargetChan:
+		if !ok { return "", "", "" }
 		return targetIp, <-p.outIcmpRealChan, <-p.outIcmpResChan
 	case <-time.After(time.Second):
 		return "", "", ""
@@ -179,21 +181,11 @@ func (p *DNSPool) send() {
 	packet = append(packet, dnsHdr...)
 	packet = append(packet, dnsQry...)
 
-	// dstIpStrBytes := make([]byte, FORMAT_IPV4_LEN + 1)
-	// dstIpStrBytes[0] = FORMAT_IPV4_LEN
-
 	var dstIp []byte
-	// OuterLoop:
+	var ok bool
 	for {
-		// select {
-		// case dstIp = <- p.inIpChan:
-		// case <-time.After(2 * time.Second):
-		// 	if p.finish { break OuterLoop } else { continue OuterLoop }
-		// }
-		dstIp = <-p.inIpChan
-		if dstIp == nil {
-			break
-		}
+		dstIp, ok = <-p.inIpChan
+		if !ok { break }
 		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
@@ -252,6 +244,11 @@ func (p *DNSPool) recvIcmp() {
 }
 
 func (p *DNSPool) Finish() {
-	p.Add(nil)
 	p.finish = true
+	close(p.inIpChan)
+	close(p.outIcmpTargetChan)
+	close(p.outIcmpRealChan)
+	close(p.outIcmpResChan)
+	close(p.outDnsTargetChan)
+	close(p.outDnsRealChan)
 }

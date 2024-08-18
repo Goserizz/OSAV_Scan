@@ -67,12 +67,14 @@ func NewDNSPoolSlow(nSender, bufSize int, srcIpStr string, ifaceName string, src
 }
 
 func (p *DNSPoolSlow) Add(dstIp []byte) {
+	if p.finish { return }
 	p.inIpChan <- dstIp
 }
 
 func (p *DNSPoolSlow) GetIcmp() *ICMPResponse {
 	select {
-		case icmpRes := <- p.outIcmpChan:
+		case icmpRes, ok := <- p.outIcmpChan:
+			if !ok { return nil }
 			return icmpRes
 		case <-time.After(time.Second):
 			return nil
@@ -81,7 +83,8 @@ func (p *DNSPoolSlow) GetIcmp() *ICMPResponse {
 
 func (p *DNSPoolSlow) GetDns() (string, string) {
 	select {
-	case targetIp := <- p.outDnsTargetChan:
+	case targetIp, ok := <- p.outDnsTargetChan:
+		if !ok { return "", "" }
 		return targetIp, <- p.outDnsRealChan
 	case <-time.After(time.Second):
 		return "", ""
@@ -185,12 +188,10 @@ func (p *DNSPoolSlow) send() {
 	dstIpStrBytes[0] = FORMAT_IPV4_LEN_SLOW
 
 	var dstIp []byte
-	OuterLoop:
+	var ok bool
 	for {
-		select {
-		case dstIp = <- p.inIpChan:
-		case <-time.After(2 * time.Second): if p.finish { break OuterLoop } else { continue OuterLoop }
-		}
+		dstIp, ok = <- p.inIpChan
+		if !ok { break }
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
 		dstIpStr := net.IP(dstIp).String()
@@ -280,4 +281,8 @@ func (p *DNSPoolSlow) recvIcmp() {
 
 func (p *DNSPoolSlow) Finish() {
 	p.finish = true
+	close(p.inIpChan)
+	close(p.outIcmpChan)
+	close(p.outDnsTargetChan)
+	close(p.outDnsRealChan)
 }

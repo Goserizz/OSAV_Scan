@@ -57,13 +57,15 @@ func NewDNSPoolTtl(nSender, bufSize int, srcIpStr string, ifaceName string, srcM
 }
 
 func (p *DNSPoolTtl) Add(dstIp []byte, ttl uint8) {
+	if p.finish { return }
 	p.inIpChan <- dstIp
 	p.inTtlChan <- ttl
 }
 
 func (p *DNSPoolTtl) GetIcmp() (string, string, string, uint8) {
 	select {
-		case icmpResp := <- p.outIcmpChan:
+		case icmpResp, ok := <- p.outIcmpChan:
+			if !ok { return "", "", "", 0 }
 			return icmpResp.Target, icmpResp.Real, icmpResp.Res, icmpResp.Ttl
 		case <-time.After(time.Second):
 			return "", "", "", 0
@@ -157,11 +159,12 @@ func (p *DNSPoolTtl) send() {
 	// packet  = append(packet, dnsQry...)
 
 	var dstIp []byte
+	var ok bool
 	var ttl uint8
 	for {
 		dstIp = <- p.inIpChan
-		ttl = <- p.inTtlChan
-		if dstIp == nil { break }
+		ttl, ok = <- p.inTtlChan
+		if !ok { break }
 		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
@@ -200,10 +203,10 @@ func (p *DNSPoolTtl) recvIcmp() {
 	// 接收ICMP报文
 	for {
 		n, _, err := syscall.Recvfrom(fd, buf, 0)
+		if p.finish { break }
 		if n < 56 { continue }
 		if err != nil { panic(err) }
 		p.icmpParseChan <- buf[:n]
-		if p.finish { break }
 	}
 }
 
@@ -211,7 +214,8 @@ func (p *DNSPoolTtl) parseIcmp() {
 	ipv4LenUint8 := uint8(70)
 	ipLowBytes := make([]byte, 2)
 	for {
-		buf := <- p.icmpParseChan
+		buf, ok := <- p.icmpParseChan
+		if !ok { break }
 		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
 		binary.BigEndian.PutUint16(ipLowBytes[0:2], ((binary.BigEndian.Uint16(buf[48:50]) - BASE_PORT) << p.shards) + p.shard)
 		p.outIcmpChan <- IcmpResp{
@@ -223,6 +227,9 @@ func (p *DNSPoolTtl) parseIcmp() {
 }
 
 func (p *DNSPoolTtl) Finish() {
-	p.Add(nil, 0)
 	p.finish = true
+	close(p.inIpChan)
+	close(p.inTtlChan)
+	close(p.icmpParseChan)
+	close(p.outIcmpChan)
 }
