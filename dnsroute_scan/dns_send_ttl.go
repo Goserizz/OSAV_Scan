@@ -196,12 +196,13 @@ func (p *DNSPoolTtl) recvIcmp() {
 	err = syscall.Bind(fd, &addr)
 	if err != nil { panic(err) }
 	
+	buf := make([]byte, 1500)
 	// 接收ICMP报文
 	for {
-		buf := make([]byte, 1500)
-		_, _, err := syscall.Recvfrom(fd, buf, 0)
+		n, _, err := syscall.Recvfrom(fd, buf, 0)
+		if n < 56 { continue }
 		if err != nil { panic(err) }
-		p.icmpParseChan <- buf
+		p.icmpParseChan <- buf[:n]
 		if p.finish { break }
 	}
 }
