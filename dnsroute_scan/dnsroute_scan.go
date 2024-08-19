@@ -180,6 +180,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 
 	shards_mask := uint64((1 << shards) - 1)
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
+	limiterRe := rate.NewLimiter(rate.Limit(10000), 100)
 	ipDec := uint64(1)
 	fileNo := startFileNo
 	for i := uint64(0); i < fileNo * nSeg; i ++ { ipDec = (ipDec * 3) % PRIME }
@@ -188,8 +189,11 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 	bar := progressbar.Default(int64(nTot) * int64(endTtl - startTtl + 1) - int64(fileNo * nSeg) * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
 	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
 		icmpFile := filepath.Join(outDir, fmt.Sprintf("icmp-%d.txt", fileNo))
+		icmpReFile := filepath.Join(outDir, fmt.Sprintf("icmp-re-%d.txt", fileNo))
 		dnsFile := filepath.Join(outDir, fmt.Sprintf("dns-%d.txt", fileNo))
 		file, err := os.Create(icmpFile)
+		if err != nil { panic(err) } else { file.Close() }
+		file, err = os.Create(icmpReFile)
 		if err != nil { panic(err) } else { file.Close() }
 		file, err = os.Create(dnsFile)
 		if err != nil { panic(err) } else { file.Close() }
@@ -226,7 +230,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			for {
 				targetIp, realIp, resIp, ttl := p.GetIcmp()
 				if targetIp == "" {
-					if finish { break }
+					if p.IsFinished() { break }
 				} else if targetIp != realIp {
 					Append1Addr6ToFS(icmpFile, targetIp+","+realIp+","+resIp+","+fmt.Sprintf("%d", ttl))
 					tfSet[targetIp] = true
@@ -240,6 +244,35 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		p.Finish()
 		ipDecStart = ipDec
 		fileNo += 1
+
+		// re-traceroute
+		pRe := NewDNSPoolTtl(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, 0, 0)
+		finish = false
+		go func() {
+			for ttl := endTtl; ttl >= startTtl; ttl-- {
+				for dstIpStr := range tfSet {
+					dstIp := net.ParseIP(dstIpStr).To4()
+					limiterRe.Wait(context.TODO())
+					pRe.Add(dstIp, ttl)
+				}
+			}
+			time.Sleep(2 * time.Second)
+			finish = true
+		}()
+		
+		go func() {
+			for {
+				targetIp, realIp, resIp, ttl := pRe.GetIcmp()
+				if targetIp == "" {
+					if pRe.IsFinished() { break }
+				} else {
+					Append1Addr6ToFS(icmpReFile, targetIp+","+realIp+","+resIp+","+fmt.Sprintf("%d", ttl))
+				}
+			}
+		}()
+
+		for !finish { time.Sleep(time.Second) }
+		pRe.Finish()
 
 		// DNS
 		finish = false

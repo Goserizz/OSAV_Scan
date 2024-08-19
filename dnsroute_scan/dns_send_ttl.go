@@ -203,3 +203,7 @@ func (p *DNSPoolTtl) Finish() {
 	close(p.icmpParseChan)
 	close(p.outIcmpChan)
 }
+
+func (p *DNSPoolTtl) IsFinished() bool {
+	return p.finish
+}
