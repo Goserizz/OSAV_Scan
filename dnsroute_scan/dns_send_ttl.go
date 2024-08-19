@@ -118,45 +118,14 @@ func (p *DNSPoolTtl) send() {
 	binary.Write(udpHdrBuf, binary.BigEndian, uint16(0))  // checksum
 	udpHdr := udpHdrBuf.Bytes()
 
-	// Construct DNS Header
-	// dnsHdrBuf := new(bytes.Buffer)
-	// var flags uint16 = 0x0100  // recursive
-	// var qdcount uint16 = 3   // # Queries
-	// var ancount, nscount, arcount uint16 = 0, 0, 0  //  Answer, Authoritive, Addition
-	// binary.Write(dnsHdrBuf, binary.BigEndian, TRANSACTION_ID)
-	// binary.Write(dnsHdrBuf, binary.BigEndian, flags)
-	// binary.Write(dnsHdrBuf, binary.BigEndian, qdcount)
-	// binary.Write(dnsHdrBuf, binary.BigEndian, ancount)
-	// binary.Write(dnsHdrBuf, binary.BigEndian, nscount)
-	// binary.Write(dnsHdrBuf, binary.BigEndian, arcount)
-	// dnsHdr := dnsHdrBuf.Bytes()
-
-	// construct DNS Query
-	// dnsQryBuf := new(bytes.Buffer)
-	// for i := 0; i < 1; i ++ {
-	// 	sections := strings.Split(JD_DOMAIN, ".")
-	// 	for _, s := range sections {
-	// 		binary.Write(dnsQryBuf, binary.BigEndian, byte(len(s)))  // length
-	// 		for _, b := range []byte(s) {
-	// 			binary.Write(dnsQryBuf, binary.BigEndian, b)
-	// 		}
-	// 	}
-	// 	binary.Write(dnsQryBuf, binary.BigEndian, byte(0)) // 0
-	// 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // A
-	// 	binary.Write(dnsQryBuf, binary.BigEndian, uint16(1)) // Internet
-	// }
-	// dnsQry := dnsQryBuf.Bytes()
-
 	// pre calculate IP header checksum
 	ipv4Cks := uint32(0)
 	for i := 0; i < 20; i += 2 { ipv4Cks += uint32(binary.BigEndian.Uint16(ipv4Hdr[i:i+2])) }
 
-	// Combine IP header, UDP header, DNS header, DNS query
+	// Combine IP header, UDP header, bogus DNS payload
 	packet := append(macHdr, ipv4Hdr...)
 	packet  = append(packet, udpHdr...)
 	for i := 0; i < 42; i ++ { packet = append(packet, 0) }
-	// packet  = append(packet, dnsHdr...)
-	// packet  = append(packet, dnsQry...)
 
 	var dstIp []byte
 	var ok bool
@@ -199,14 +168,14 @@ func (p *DNSPoolTtl) recvIcmp() {
 	err = syscall.Bind(fd, &addr)
 	if err != nil { panic(err) }
 	
-	buf := make([]byte, 1500)
 	// 接收ICMP报文
 	for {
+		buf := make([]byte, 1500)
 		n, _, err := syscall.Recvfrom(fd, buf, 0)
 		if p.finish { break }
 		if n < 56 { continue }
 		if err != nil { panic(err) }
-		p.icmpParseChan <- buf[:n]
+		p.icmpParseChan <- buf
 	}
 }
 
@@ -221,6 +190,7 @@ func (p *DNSPoolTtl) parseIcmp() {
 		p.outIcmpChan <- IcmpResp{
 			Target: fmt.Sprintf("%d.%d.%d.%d", buf[32], buf[33], ipLowBytes[0], ipLowBytes[1]),
 			Real: fmt.Sprintf("%d.%d.%d.%d", buf[44], buf[45], buf[46], buf[47]),
+			Res: fmt.Sprintf("%d.%d.%d.%d", buf[12], buf[13], buf[14], buf[15]),
 			Ttl: buf[53],
 		}
 	}
