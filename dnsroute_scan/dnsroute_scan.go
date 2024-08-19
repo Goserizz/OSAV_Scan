@@ -202,22 +202,23 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		tfSet := make(map[string]bool)
 		p := NewDNSPoolTtl(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, uint16(shards), uint16(shard))
 		finish := false
+		nowTtl := endTtl
 		go func() {
-			for ttl := endTtl; ttl >= startTtl; ttl-- {
+			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
 				ipDec = ipDecStart
 				counter := seg
 				for i := uint64(0); i < nSeg; i++ {
 					if (i+1)%LOG_INTV == 0 {
 						bar.Add(LOG_INTV)
 						nIn, nPar, nOut := p.LenInChan()
-						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, ttl, nIn, nPar, nOut))
+						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, nowTtl, nIn, nPar, nOut))
 					}
 					ipDec = (ipDec * 3) % PRIME
 					if ipDec >= IPNUM || IsBogon(ipDec) || (ipDec & shards_mask) != shard { continue }
 					dstIp := make([]byte, 4)
 					binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
 					limiter.Wait(context.TODO())
-					p.Add(dstIp, ttl)
+					p.Add(dstIp, nowTtl)
 					counter++
 					if counter == nTot { break }
 				}
@@ -231,6 +232,8 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 				targetIp, realIp, resIp, ttl := p.GetIcmp()
 				if targetIp == "" {
 					if p.IsFinished() { break }
+				} else if ttl < nowTtl {
+					continue
 				} else if targetIp != realIp {
 					Append1Addr6ToFS(icmpFile, targetIp+","+realIp+","+resIp+","+fmt.Sprintf("%d", ttl))
 					tfSet[targetIp] = true
@@ -249,11 +252,11 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		pRe := NewDNSPoolTtl(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, 0, 0)
 		finish = false
 		go func() {
-			for ttl := endTtl; ttl >= startTtl; ttl-- {
+			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
 				for dstIpStr := range tfSet {
 					dstIp := net.ParseIP(dstIpStr).To4()
 					limiterRe.Wait(context.TODO())
-					pRe.Add(dstIp, ttl)
+					pRe.Add(dstIp, nowTtl)
 				}
 			}
 			time.Sleep(2 * time.Second)
@@ -265,6 +268,8 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 				targetIp, realIp, resIp, ttl := pRe.GetIcmp()
 				if targetIp == "" {
 					if pRe.IsFinished() { break }
+				} else if ttl < nowTtl {
+					continue
 				} else {
 					Append1Addr6ToFS(icmpReFile, targetIp+","+realIp+","+resIp+","+fmt.Sprintf("%d", ttl))
 				}
