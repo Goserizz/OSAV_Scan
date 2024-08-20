@@ -65,7 +65,7 @@ func (p *DNSPoolTtl) Add(dstIp []byte, ttl uint8) {
 func (p *DNSPoolTtl) GetIcmp() (string, string, string, uint8) {
 	select {
 		case icmpResp, ok := <- p.outIcmpChan:
-			if !ok { return "", "", "", 0 }
+			if !ok || p.finish { return "", "", "", 0 }
 			return icmpResp.Target, icmpResp.Real, icmpResp.Res, icmpResp.Ttl
 		case <-time.After(time.Second):
 			return "", "", "", 0
@@ -133,7 +133,7 @@ func (p *DNSPoolTtl) send() {
 	for {
 		dstIp = <- p.inIpChan
 		ttl, ok = <- p.inTtlChan
-		if !ok { break }
+		if !ok || p.finish { break }
 		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
@@ -184,7 +184,7 @@ func (p *DNSPoolTtl) parseIcmp() {
 	ipLowBytes := make([]byte, 2)
 	for {
 		buf, ok := <- p.icmpParseChan
-		if !ok { break }
+		if !ok || p.finish { break }
 		if buf[31] != ipv4LenUint8 || buf[37] != syscall.IPPROTO_UDP || buf[20] != 11 || buf[21] != 0 { continue }
 		binary.BigEndian.PutUint16(ipLowBytes[0:2], ((binary.BigEndian.Uint16(buf[48:50]) - BASE_PORT) << p.shards) + p.shard)
 		p.outIcmpChan <- IcmpResp{

@@ -87,7 +87,7 @@ func (p *DNSPool) Add(dstIp []byte) {
 func (p *DNSPool) GetIcmp() (string, string, string) {
 	select {
 	case targetIp, ok := <-p.outIcmpTargetChan:
-		if !ok { return "", "", "" }
+		if !ok || p.finish { return "", "", "" }
 		return targetIp, <-p.outIcmpRealChan, <-p.outIcmpResChan
 	case <-time.After(time.Second):
 		return "", "", ""
@@ -185,7 +185,7 @@ func (p *DNSPool) send() {
 	var ok bool
 	for {
 		dstIp, ok = <-p.inIpChan
-		if !ok { break }
+		if !ok || p.finish { break }
 		// dstIp := net.ParseIP(dstIpStr).To4()
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow := uint32(binary.BigEndian.Uint16(dstIp[2:4]))

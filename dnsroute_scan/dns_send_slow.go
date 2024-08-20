@@ -74,7 +74,7 @@ func (p *DNSPoolSlow) Add(dstIp []byte) {
 func (p *DNSPoolSlow) GetIcmp() *ICMPResponse {
 	select {
 		case icmpRes, ok := <- p.outIcmpChan:
-			if !ok { return nil }
+			if !ok || p.finish { return nil }
 			return icmpRes
 		case <-time.After(time.Second):
 			return nil
@@ -84,7 +84,7 @@ func (p *DNSPoolSlow) GetIcmp() *ICMPResponse {
 func (p *DNSPoolSlow) GetDns() (string, string) {
 	select {
 	case targetIp, ok := <- p.outDnsTargetChan:
-		if !ok { return "", "" }
+		if !ok || p.finish { return "", "" }
 		return targetIp, <- p.outDnsRealChan
 	case <-time.After(time.Second):
 		return "", ""
@@ -191,7 +191,7 @@ func (p *DNSPoolSlow) send() {
 	var ok bool
 	for {
 		dstIp, ok = <- p.inIpChan
-		if !ok { break }
+		if !ok || p.finish { break }
 		dstIpHigh := uint32(binary.BigEndian.Uint16(dstIp[0:2]))
 		dstIpLow  := uint32(binary.BigEndian.Uint16(dstIp[2:4]))
 		dstIpStr := net.IP(dstIp).String()
