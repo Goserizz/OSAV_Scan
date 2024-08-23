@@ -1,23 +1,26 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"flag"
 )
 
 var (
 	iface = flag.String("iface", "", "The interface used for DNSRoute.")
-	startTtl = flag.Int("s", 2, "Start TTL.")
-	endTtl = flag.Int("e", 50, "End TTL.")
+	startTtl = flag.Int("s", 5, "Start TTL.")
+	endTtl = flag.Int("e", 40, "End TTL.")
 	inputFile = flag.String("i", "", "Input file for scanning.")
 	outputFile = flag.String("o", "", "Output file.")
 	pps = flag.Int("pps", 10000, "Sending rate PPS.")
 	dstMacStr = flag.String("dmac", "", "The mac address of router.")
 	remotePort = flag.Uint("r", 80, "The remote port used for sending TCP SYN.")
 	nTot = flag.Uint64("n", 3702258688, "The number of ip addresses will be sent.")
+	nSend = flag.Int("nsend", 1, "The number of senders.")
 	nSeg = flag.Uint64("nseg", 10000000, "The number of addresses scannned in batch.")
 	blockFile = flag.String("b", "blocklist.txt", "Do not receive packets from these IPs.")
-	startFileNo = flag.Uint64("no", 0, "The No. of file start from.")
+	startFileNo = flag.Uint64("sno", 0xffffffffffffffff, "The No. of file start from.")
+	endFileNo   = flag.Uint64("eno", 0xffffffffffffffff, "The No. of file end with.")
 )
 
 func main() {
@@ -30,11 +33,20 @@ func main() {
 	srcIpv4Arr, _, srcMac, err := GetIface(*iface)
 	if err != nil { panic(err) }
 	srcIpStr := srcIpv4Arr[0]
+	if *dstMacStr == "" {
+		gatewayIP, err := GetDefaultGateway()
+		if err != nil { panic(err) }
+		fmt.Println("Default Gateway IP:", gatewayIP)
+
+		*dstMacStr, err = GetMACAddress(gatewayIP)
+		if err != nil { panic(err) }
+		fmt.Println("Gateway MAC Address:", *dstMacStr)
+	}
 	dstMac, err := net.ParseMAC(*dstMacStr)
 	if err != nil { panic(err) }
 	
 	if *inputFile == "" {
-		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, *blockFile, uint8(*startTtl), uint8(*endTtl), *pps, *startFileNo, *nSeg, *nTot, srcMac, dstMac, uint16(*remotePort))
+		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, *blockFile, uint8(*startTtl), uint8(*endTtl), *pps, *nSend, *startFileNo, *endFileNo, *nSeg, *nTot, srcMac, dstMac, uint16(*remotePort))
 	} else {
 		TCPRouteScan(srcIpStr, *iface, *inputFile, *outputFile, uint8(*startTtl), uint8(*endTtl), *pps, srcMac, dstMac, uint16(*remotePort))
 	}

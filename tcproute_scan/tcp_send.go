@@ -101,7 +101,8 @@ func (p *TCPoolv4) Add(dstIp []byte) { p.inChan <- dstIp }
 
 func (p *TCPoolv4) GetTcp() (string, string, uint16) { 
 	select {
-	case target := <- p.outTcpTgtChan:
+	case target, ok := <- p.outTcpTgtChan:
+		if !ok || p.finish { return "", "", 0 }
 		return target, <- p.outTcpRealChan, <- p.outTcpPortChan
 	case <-time.After(time.Second):
 		return "", "", 0
@@ -109,7 +110,8 @@ func (p *TCPoolv4) GetTcp() (string, string, uint16) {
 }
 func (p *TCPoolv4) GetIcmp() *ICMPResponse { 
 	select {
-	case icmpRes := <- p.outIcmpChan:
+	case icmpRes, ok := <- p.outIcmpChan:
+		if !ok || p.finish { return nil }
 		return icmpRes
 	case <- time.After(time.Second):
 		return nil
@@ -187,8 +189,8 @@ func (p *TCPoolv4) send() {
 	pkt  = append(pkt, tcpHdr...)
 
 	for {
-		dstIp := <- p.inChan
-		if dstIp == nil { break }
+		dstIp, ok := <- p.inChan
+		if !ok || p.finish { break}
 		ipv4Cks, tcpCks := p.calCks(dstIp)
 
 		// Complete IP Header
@@ -268,6 +270,12 @@ func (p *TCPoolv4) recvIcmp() {
 }
 
 func (p *TCPoolv4) Finish() {
-	p.Add(nil)
 	p.finish = true
+	close(p.inChan)
+	close(p.outTcpTgtChan)
+	close(p.outTcpRealChan)
+	close(p.outTcpPortChan)
+	close(p.outIcmpChan)
 }
+
+func (p *TCPoolv4) IsFinish() bool { return p.finish }
