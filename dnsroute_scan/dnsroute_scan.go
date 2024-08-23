@@ -192,7 +192,8 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 	for i := uint64(0); i < fileNo * nSeg; i ++ { ipDec = (ipDec * 3) % PRIME }
 	ipDecStart := ipDec
 
-	bar := progressbar.Default(int64(nTot) * int64(endTtl - startTtl + 1) - int64(fileNo * nSeg) * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
+	nIp := min(int64(nTot) - int64(fileNo * nSeg), int64((endFileNo - startFileNo + 1) * nSeg))
+	bar := progressbar.Default(nIp * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
 	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
 		icmpFile := filepath.Join(icmpDir, fmt.Sprintf("icmp-%d.txt", fileNo))
 		icmpReFile := filepath.Join(icmpReDir, fmt.Sprintf("icmp-re-%d.txt", fileNo))
