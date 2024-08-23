@@ -160,7 +160,7 @@ func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile strin
 	}
 }
 
-func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, startFileNo, nSeg, nTot, shards, shard uint64) {
+func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, startFileNo, endFileNo, nSeg, nTot, shards, shard uint64) {
 	if startFileNo == 0xffffffffffffffff {
 		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
 			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
@@ -177,6 +177,12 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		os.Mkdir(outDir, 0755)
 		startFileNo = 0
 	}
+	dnsDir := filepath.Join(outDir, "dns")
+	if _, err := os.Stat(dnsDir); os.IsNotExist(err) { os.Mkdir(dnsDir, 0755) }
+	icmpDir := filepath.Join(outDir, "icmp")
+	if _, err := os.Stat(icmpDir); os.IsNotExist(err) { os.Mkdir(icmpDir, 0755) }
+	icmpReDir := filepath.Join(outDir, "icmp-re")
+	if _, err := os.Stat(icmpReDir); os.IsNotExist(err) { os.Mkdir(icmpReDir, 0755) }
 
 	shards_mask := uint64((1 << shards) - 1)
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
@@ -188,9 +194,9 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 
 	bar := progressbar.Default(int64(nTot) * int64(endTtl - startTtl + 1) - int64(fileNo * nSeg) * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
 	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
-		icmpFile := filepath.Join(outDir, fmt.Sprintf("icmp-%d.txt", fileNo))
-		icmpReFile := filepath.Join(outDir, fmt.Sprintf("icmp-re-%d.txt", fileNo))
-		dnsFile := filepath.Join(outDir, fmt.Sprintf("dns-%d.txt", fileNo))
+		icmpFile := filepath.Join(icmpDir, fmt.Sprintf("icmp-%d.txt", fileNo))
+		icmpReFile := filepath.Join(icmpReDir, fmt.Sprintf("icmp-re-%d.txt", fileNo))
+		dnsFile := filepath.Join(dnsDir, fmt.Sprintf("dns-%d.txt", fileNo))
 		file, err := os.Create(icmpFile)
 		if err != nil { panic(err) } else { file.Close() }
 		file, err = os.Create(icmpReFile)
@@ -336,5 +342,7 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		}
 		finish = true
 		pSlow.Finish()
+
+		if fileNo > endFileNo { break }
 	}
 }

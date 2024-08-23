@@ -21,7 +21,8 @@ var (
 	nSeg        = flag.Uint64("nseg", 0, "The number of addresses scannned in batch.")
 	shards      = flag.Uint64("shards", 0, "The bits used for scanning id.")
 	shard       = flag.Uint64("shard", 0, "The scanning id used for this scan.")
-	startFileNo = flag.Uint64("no", 0xffffffffffffffff, "The No. of file start from.")
+	startFileNo = flag.Uint64("sno", 0xffffffffffffffff, "The No. of file start from.")
+	endFileNo   = flag.Uint64("eno", 0xffffffffffffffff, "The No. of file end with.")
 )
 
 func main() {
@@ -58,7 +59,7 @@ func main() {
 	} else if *nSeg == 0 {
 		DNSRouteScanWhole(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *nTot)
 	} else {
-		DNSRouteScanWithForwarder(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *startFileNo, *nSeg, *nTot, *shards, *shard)
+		DNSRouteScanWithForwarder(srcMac, dstMac, srcIpStr, *iface, *outputFile, uint8(*startTTL), uint8(*endTTL), *pps, *nSend, *startFileNo, *endFileNo, *nSeg, *nTot, *shards, *shard)
 	}
 
 }
