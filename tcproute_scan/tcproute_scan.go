@@ -226,8 +226,8 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 						if err != nil {
 							panic(err)
 						}
-						nIn, nIcmpParse, nTcpParse, nIcmpOut, nTcpOut := p.LenInChan()
-						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, (%d, %d) parsing, (%d, %d) out", seg, seg+nSeg, nowTtl, nIn, nIcmpParse, nTcpParse, nIcmpOut, nTcpOut))
+						nIn, nIcmpParse, nIcmpOut := p.LenInChan()
+						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, nowTtl, nIn, nIcmpParse, nIcmpOut))
 					}
 					ipDec = (ipDec * 3) % PRIME
 					if ipDec >= IPNUM || IsBogon(ipDec) {
