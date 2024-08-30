@@ -234,11 +234,11 @@ func DNSRouteScanWithForwarder(
 						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, nowTtl, nIn, nPar, nOut))
 					}
 					ipDec = (ipDec * 3) % PRIME
-					if ipDec >= IPNUM || IsBogon(ipDec) || (ipDec&shardsMask) != shard {
-						continue
-					}
 					if ipDec == 1 {
 						break
+					}
+					if ipDec >= IPNUM || IsBogon(ipDec) || (ipDec&shardsMask) != shard {
+						continue
 					}
 					dstIp := make([]byte, 4)
 					binary.BigEndian.PutUint32(dstIp, uint32(ipDec))

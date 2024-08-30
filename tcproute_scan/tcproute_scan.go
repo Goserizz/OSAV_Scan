@@ -229,11 +229,11 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, nowTtl, nIn, nIcmpParse, nIcmpOut))
 					}
 					ipDec = (ipDec * 3) % PRIME
-					if ipDec >= IPNUM || IsBogon(ipDec) {
-						continue
-					}
 					if ipDec == 1 { // All IPs are scanned
 						break
+					}
+					if ipDec >= IPNUM || IsBogon(ipDec) {
+						continue
 					}
 					dstIp := make([]byte, 4)
 					binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
