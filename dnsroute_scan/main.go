@@ -9,7 +9,7 @@ import (
 var (
 	iface       = flag.String("iface", "", "The interface used for DNSRoute.")
 	startTTL    = flag.Int("s", 5, "Start TTL.")
-	endTTL      = flag.Int("e", 40, "End TTL.")
+	endTTL      = flag.Int("e", 30, "End TTL.")
 	inputFile   = flag.String("i", "", "Input file for scanning.")
 	outputFile  = flag.String("o", "", "Output file.")
 	natFile     = flag.String("nat", "", "Output file for SNAT.")

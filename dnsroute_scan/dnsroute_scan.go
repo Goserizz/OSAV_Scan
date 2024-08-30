@@ -282,7 +282,7 @@ func DNSRouteScanWithForwarder(
 		pRe := NewDNSPoolTtl(nSender, BufSize, srcIpStr, ifaceName, srcMac, dstMac, 0, 0)
 		finish = false
 		go func() {
-			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
+			for nowTtl = 50; nowTtl >= 2; nowTtl-- {
 				for dstIpStr := range tfSet {
 					dstIp := net.ParseIP(dstIpStr).To4()
 					err := limiterRe.Wait(context.TODO())

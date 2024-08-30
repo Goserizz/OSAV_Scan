@@ -290,7 +290,7 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 
 		rePool := NewTCPoolTtl(remotePort, BufSize, iface, srcIpStr, srcMac, dstMac, blockFile, 1)
 		go func() {
-			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
+			for nowTtl = 50; nowTtl >= 2; nowTtl-- {
 				for dstIpStr := range trueTfSet {
 					err := limiterRe.Wait(context.TODO())
 					if err != nil {
