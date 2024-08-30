@@ -56,7 +56,7 @@ func main() {
 	}
 
 	if *inputFile == "" {
-		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, *blockFile, uint8(*startTtl), uint8(*endTtl), *pps, *nSend, *startFileNo, *endFileNo, *nSeg, *nTot, srcMac, dstMac, uint16(*remotePort))
+		TCPRouteScanWithForwarder(srcIpStr, *iface, *outputFile, *blockFile, uint8(*startTtl), uint8(*endTtl), *pps, *nSend, *startFileNo, *endFileNo, *nSeg, srcMac, dstMac, uint16(*remotePort))
 	} else {
 		TCPRouteScan(srcIpStr, *iface, *inputFile, *outputFile, uint8(*startTtl), uint8(*endTtl), *pps, srcMac, dstMac, uint16(*remotePort))
 	}

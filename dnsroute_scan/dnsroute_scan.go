@@ -17,18 +17,31 @@ import (
 )
 
 const (
-	REMOTE_PORT uint16 = 53
-	LOG_INTV           = 100000
-	BURST              = 10000
-	PRIME       uint64 = 4294967311
-	IPNUM       uint64 = 4294967296
-	BUF_SIZE           = 1000
+	LogIntv        = 100000
+	BURST          = 10000
+	PRIME   uint64 = 4294967311
+	IPNUM   uint64 = 4294967296
+	BufSize        = 10000
 )
 
-func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string, startTtl, endTtl uint8, nSender, pps int, srcMac, dstMac []byte) {
-	os.Remove(outFile)
-	os.Remove(natFile)
-	os.Remove(dnsFile)
+func DNSRouteScan(
+	srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
+	startTtl, endTtl uint8,
+	nSender, pps int,
+	srcMac, dstMac []byte,
+) {
+	err := os.Remove(outFile)
+	if err != nil {
+		panic(err)
+	}
+	err = os.Remove(natFile)
+	if err != nil {
+		panic(err)
+	}
+	err = os.Remove(dnsFile)
+	if err != nil {
+		panic(err)
+	}
 	dstIpStrArray := ReadLineAddr6FromFS(inFile)
 	bar := progressbar.Default(int64(len(dstIpStrArray)*int(endTtl-startTtl+1)), "Scanning...")
 	var doneIps sync.Map
@@ -40,7 +53,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 	}
 	counter := 0
 	for ttl := startTtl; ttl <= endTtl; ttl++ {
-		p := NewDNSPoolSlow(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
+		p := NewDNSPoolSlow(nSender, BufSize, srcIpStr, ifaceName, srcMac, dstMac, ttl)
 		bar.Describe(fmt.Sprintf("Scanning TTL=%d...", ttl))
 		finish := false
 
@@ -48,20 +61,26 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 		go func() {
 			for _, dstIpStr := range dstIpStrArray {
 				counter += 1
-				if counter%LOG_INTV == 0 {
-					bar.Add(LOG_INTV)
+				if counter%LogIntv == 0 {
+					err := bar.Add(LogIntv)
+					if err != nil {
+						panic(err)
+					}
 				}
 				_, ok := doneIps.Load(dstIpStr)
 				if ok {
 					continue
 				}
-				limiter.Wait(context.TODO())
+				err := limiter.Wait(context.TODO())
+				if err != nil {
+					panic(err)
+				}
 				p.Add(net.ParseIP(dstIpStr).To4())
 			}
 			finish = true
 		}()
 
-		// recieve icmp
+		// receive icmp
 		go func() {
 			for {
 				icmpRes := p.GetIcmp()
@@ -80,7 +99,7 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 			}
 		}()
 
-		// recieve dns
+		// receive dns
 		go func() {
 			for {
 				targetIp, realIp := p.GetDns()
@@ -108,59 +127,13 @@ func DNSRouteScan(srcIpStr, ifaceName, inFile, outFile, natFile, dnsFile string,
 	}
 }
 
-func DNSRouteScanWhole(srcMac, dstMac []byte, srcIpStr, ifaceName, outFile string, startTtl, endTtl uint8, pps, nSender int, nTot uint64) {
-	os.Remove(outFile)
-	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
-	for ttl := startTtl; ttl <= endTtl; ttl++ {
-		finish := false
-		p := NewDNSPool(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, ttl)
-		go func() {
-			ipDec := uint64(1)
-			counter := uint64(0)
-			bar := progressbar.Default(int64(nTot), fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan()))
-			for i := uint64(0); i < PRIME; i++ {
-				ipDec = (ipDec * 3) % PRIME
-				if ipDec >= IPNUM || IsBogon(ipDec) {
-					continue
-				}
-				if (i+1)%LOG_INTV == 0 {
-					bar.Add(LOG_INTV)
-					bar.Describe(fmt.Sprintf("Scanning TTL=%d, %d waiting", ttl, p.LenInChan()))
-				}
-				dstIp := make([]byte, 4)
-				binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
-				limiter.Wait(context.TODO())
-				p.Add(dstIp)
-				counter++
-				if counter == nTot {
-					break
-				}
-			}
-			time.Sleep(10 * time.Second)
-			finish = true
-		}()
-
-		go func() {
-			for {
-				targetIp, realIp, resIp := p.GetIcmp()
-				if targetIp == "" {
-					if finish {
-						break
-					}
-				} else if targetIp != realIp {
-					Append1Addr6ToFS(outFile, targetIp+","+realIp+","+resIp+","+fmt.Sprintf("%d", ttl))
-				}
-			}
-		}()
-
-		for !finish {
-			time.Sleep(time.Second)
-		}
-		p.Finish()
-	}
-}
-
-func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDir string, startTtl, endTtl uint8, pps, nSender int, startFileNo, endFileNo, nSeg, nTot, shards, shard uint64) {
+func DNSRouteScanWithForwarder(
+	srcMac, dstMac []byte,
+	srcIpStr, ifaceName, outDir string,
+	startTtl, endTtl uint8,
+	pps, nSender int,
+	startFileNo, endFileNo, nSeg, shards, shard uint64,
+) {
 	if startFileNo == 0xffffffffffffffff {
 		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
 			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
@@ -168,69 +141,112 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			if scanner.Scan() {
 				response := scanner.Text()
 				if strings.ToLower(response) == "y" {
-					os.RemoveAll(outDir)
+					err := os.RemoveAll(outDir)
+					if err != nil {
+						panic(err)
+					}
 				} else {
 					os.Exit(0)
 				}
 			}
 		}
-		os.Mkdir(outDir, 0755)
+		err := os.Mkdir(outDir, 0755)
+		if err != nil {
+			panic(err)
+		}
 		startFileNo = 0
 	}
 	dnsDir := filepath.Join(outDir, "dns")
-	if _, err := os.Stat(dnsDir); os.IsNotExist(err) { os.Mkdir(dnsDir, 0755) }
+	if _, err := os.Stat(dnsDir); os.IsNotExist(err) && os.Mkdir(dnsDir, 0755) != nil {
+		panic(err)
+	}
 	icmpDir := filepath.Join(outDir, "icmp")
-	if _, err := os.Stat(icmpDir); os.IsNotExist(err) { os.Mkdir(icmpDir, 0755) }
+	if _, err := os.Stat(icmpDir); os.IsNotExist(err) && os.Mkdir(icmpDir, 0755) != nil {
+		panic(err)
+	}
 	icmpReDir := filepath.Join(outDir, "icmp-re")
-	if _, err := os.Stat(icmpReDir); os.IsNotExist(err) { os.Mkdir(icmpReDir, 0755) }
+	if _, err := os.Stat(icmpReDir); os.IsNotExist(err) && os.Mkdir(icmpReDir, 0755) != nil {
+		panic(err)
+	}
 
-	shards_mask := uint64((1 << shards) - 1)
+	shardsMask := uint64((1 << shards) - 1)
 	limiter := rate.NewLimiter(rate.Limit(pps), BURST)
 	limiterRe := rate.NewLimiter(rate.Limit(10000), 100)
 	ipDec := uint64(1)
 	fileNo := startFileNo
-	for i := uint64(0); i < fileNo * nSeg; i ++ { ipDec = (ipDec * 3) % PRIME }
+	for i := uint64(0); i < fileNo*nSeg; i++ {
+		ipDec = (ipDec * 3) % PRIME
+	}
 	ipDecStart := ipDec
 
-	nIp := int64(nTot) - int64(fileNo * nSeg)
+	nIp := int64(PRIME) - int64(fileNo*nSeg)
 	if endFileNo != 0xffffffffffffffff {
-		nIp = min(nIp, int64((endFileNo - startFileNo + 1) * nSeg))
+		nIp = min(nIp, int64((endFileNo-startFileNo+1)*nSeg))
 	}
-	bar := progressbar.Default(nIp * int64(endTtl - startTtl + 1), "Scanning TTL=50, 0 waiting")
-	for seg := uint64(startFileNo * nSeg); seg < nTot; seg += nSeg {
+	bar := progressbar.Default(nIp*int64(endTtl-startTtl+1), "Scanning TTL=50, 0 waiting")
+	for seg := startFileNo * nSeg; seg < PRIME; seg += nSeg {
 		icmpFile := filepath.Join(icmpDir, fmt.Sprintf("icmp-%d.txt", fileNo))
 		icmpReFile := filepath.Join(icmpReDir, fmt.Sprintf("icmp-re-%d.txt", fileNo))
 		dnsFile := filepath.Join(dnsDir, fmt.Sprintf("dns-%d.txt", fileNo))
 		file, err := os.Create(icmpFile)
-		if err != nil { panic(err) } else { file.Close() }
+		if err != nil {
+			panic(err)
+		} else {
+			err := file.Close()
+			if err != nil {
+				return
+			}
+		}
 		file, err = os.Create(icmpReFile)
-		if err != nil { panic(err) } else { file.Close() }
+		if err != nil {
+			panic(err)
+		} else {
+			err := file.Close()
+			if err != nil {
+				return
+			}
+		}
 		file, err = os.Create(dnsFile)
-		if err != nil { panic(err) } else { file.Close() }
+		if err != nil {
+			panic(err)
+		} else {
+			err := file.Close()
+			if err != nil {
+				return
+			}
+		}
 
 		// traceroute
 		tfSet := make(map[string]bool)
-		p := NewDNSPoolTtl(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, uint16(shards), uint16(shard))
+		p := NewDNSPoolTtl(nSender, BufSize, srcIpStr, ifaceName, srcMac, dstMac, uint16(shards), uint16(shard))
 		finish := false
 		nowTtl := endTtl
 		go func() {
 			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
 				ipDec = ipDecStart
-				counter := seg
 				for i := uint64(0); i < nSeg; i++ {
-					if (i+1)%LOG_INTV == 0 {
-						bar.Add(LOG_INTV)
+					if (i+1)%LogIntv == 0 {
+						err := bar.Add(LogIntv)
+						if err != nil {
+							panic(err)
+						}
 						nIn, nPar, nOut := p.LenInChan()
 						bar.Describe(fmt.Sprintf("Scanning %d-%d TTL=%d, %d in, %d parsing, %d out", seg, seg+nSeg, nowTtl, nIn, nPar, nOut))
 					}
 					ipDec = (ipDec * 3) % PRIME
-					if ipDec >= IPNUM || IsBogon(ipDec) || (ipDec & shards_mask) != shard { continue }
+					if ipDec >= IPNUM || IsBogon(ipDec) || (ipDec&shardsMask) != shard {
+						continue
+					}
+					if ipDec == 1 {
+						break
+					}
 					dstIp := make([]byte, 4)
 					binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
-					limiter.Wait(context.TODO())
+					err := limiter.Wait(context.TODO())
+					if err != nil {
+						panic(err)
+					}
 					p.Add(dstIp, nowTtl)
-					counter++
-					if counter == nTot { break }
 				}
 			}
 			time.Sleep(2 * time.Second)
@@ -241,7 +257,9 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			for {
 				targetIp, realIp, resIp, ttl := p.GetIcmp()
 				if targetIp == "" {
-					if p.IsFinished() { break }
+					if p.IsFinished() {
+						break
+					}
 				} else if ttl < nowTtl {
 					continue
 				} else if targetIp != realIp {
@@ -253,31 +271,38 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			}
 		}()
 
-		for !finish { time.Sleep(time.Second) }
+		for !finish {
+			time.Sleep(time.Second)
+		}
 		p.Finish()
 		ipDecStart = ipDec
 		fileNo += 1
 
 		// re-traceroute
-		pRe := NewDNSPoolTtl(nSender, BUF_SIZE, srcIpStr, ifaceName, srcMac, dstMac, 0, 0)
+		pRe := NewDNSPoolTtl(nSender, BufSize, srcIpStr, ifaceName, srcMac, dstMac, 0, 0)
 		finish = false
 		go func() {
 			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
 				for dstIpStr := range tfSet {
 					dstIp := net.ParseIP(dstIpStr).To4()
-					limiterRe.Wait(context.TODO())
+					err := limiterRe.Wait(context.TODO())
+					if err != nil {
+						panic(err)
+					}
 					pRe.Add(dstIp, nowTtl)
 				}
 			}
 			time.Sleep(2 * time.Second)
 			finish = true
 		}()
-		
+
 		go func() {
 			for {
 				targetIp, realIp, resIp, ttl := pRe.GetIcmp()
 				if targetIp == "" {
-					if pRe.IsFinished() { break }
+					if pRe.IsFinished() {
+						break
+					}
 				} else if ttl < nowTtl {
 					continue
 				} else {
@@ -286,7 +311,9 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			}
 		}()
 
-		for !finish { time.Sleep(time.Second) }
+		for !finish {
+			time.Sleep(time.Second)
+		}
 		pRe.Finish()
 
 		// DNS
@@ -301,7 +328,10 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			ipStrSet[strings.Split(scanner.Text(), ",")[0]] = true
 			ipStrSet[strings.Split(scanner.Text(), ",")[1]] = true
 		}
-		icmpF.Close()
+		err = icmpF.Close()
+		if err != nil {
+			panic(err)
+		}
 
 		pSlow := NewDNSPoolSlow(nSender, 10000, srcIpStr, ifaceName, srcMac, dstMac, 99)
 		go func() {
@@ -330,7 +360,10 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 		}()
 		for i := 0; i < 3; i++ {
 			for ipStr := range ipStrSet {
-				limiter.Wait(context.TODO())
+				err := limiter.Wait(context.TODO())
+				if err != nil {
+					return
+				}
 				pSlow.Add(net.ParseIP(ipStr).To4())
 			}
 			time.Sleep(1 * time.Second)
@@ -342,11 +375,16 @@ func DNSRouteScanWithForwarder(srcMac, dstMac []byte, srcIpStr, ifaceName, outDi
 			for scanner.Scan() {
 				delete(ipStrSet, strings.Split(scanner.Text(), ",")[0])
 			}
-			dnsF.Close()
+			err = dnsF.Close()
+			if err != nil {
+				panic(err)
+			}
 		}
 		finish = true
 		pSlow.Finish()
 
-		if fileNo > endFileNo { break }
+		if fileNo > endFileNo {
+			break
+		}
 	}
 }

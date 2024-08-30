@@ -121,7 +121,7 @@ func TCPRouteScan(srcIpStr, iface, inputFile, outputFile string, startTtl, endTt
 	}
 }
 
-func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startTtl, endTtl uint8, pps, nsend int, startFileNo, endFileNo, nSeg, nTot uint64, srcMac, dstMac []byte, remotePort uint16) {
+func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startTtl, endTtl uint8, pps, nsend int, startFileNo, endFileNo, nSeg uint64, srcMac, dstMac []byte, remotePort uint16) {
 	if startFileNo == 0xffffffffffffffff {
 		if _, err := os.Stat(outDir); !os.IsNotExist(err) {
 			fmt.Printf("Your are about to delete %s, are you sure?[y/n]", outDir)
@@ -175,12 +175,12 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 	}
 	ipDecStart := ipDec
 
-	nIp := int64(nTot) - int64(startFileNo*nSeg)
+	nIp := int64(PRIME) - int64(startFileNo*nSeg)
 	if endFileNo != 0xffffffffffffffff {
 		nIp = min(nIp, int64((endFileNo-startFileNo+1)*nSeg))
 	}
 	bar := progressbar.Default(nIp*int64(endTtl-startTtl+1), "Scanning TTL=50, 0 waiting...")
-	for seg := startFileNo * nSeg; seg < nTot; seg += nSeg {
+	for seg := startFileNo * nSeg; seg < PRIME; seg += nSeg {
 		icmpFile := filepath.Join(icmpDir, fmt.Sprintf("icmp-%d.txt", fileNo))
 		tcpFile := filepath.Join(tcpDir, fmt.Sprintf("tcp-%d.txt", fileNo))
 		icmpReFile := filepath.Join(icmpReDir, fmt.Sprintf("icmp-re-%d.txt", fileNo))
@@ -219,7 +219,6 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 		go func() {
 			for nowTtl = endTtl; nowTtl >= startTtl; nowTtl-- {
 				ipDec = ipDecStart
-				counter := seg
 				for i := uint64(0); i < nSeg; i++ {
 					if (i+1)%LogIntv == 0 {
 						err := bar.Add(LogIntv)
@@ -233,6 +232,9 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 					if ipDec >= IPNUM || IsBogon(ipDec) {
 						continue
 					}
+					if ipDec == 1 { // All IPs are scanned
+						break
+					}
 					dstIp := make([]byte, 4)
 					binary.BigEndian.PutUint32(dstIp, uint32(ipDec))
 					err := limiter.Wait(context.TODO())
@@ -240,10 +242,6 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 						panic(err)
 					}
 					p.Add(dstIp, nowTtl)
-					counter++
-					if counter == nTot {
-						break
-					}
 				}
 			}
 			time.Sleep(2 * time.Second)
