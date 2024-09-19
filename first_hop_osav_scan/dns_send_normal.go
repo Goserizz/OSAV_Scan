@@ -25,9 +25,10 @@ type DNSPoolNormal struct {
 	srcMac            []byte
 	dstMac            []byte
 	finish            bool
+	randPfx           string
 }
 
-func NewDNSPoolNormal(srcIpStr string, ifaceName string, srcMac, dstMac []byte) *DNSPoolNormal {
+func NewDNSPoolNormal(srcIpStr string, ifaceName string, srcMac, dstMac []byte, randPfx string) *DNSPoolNormal {
 	dnsPool := &DNSPoolNormal{
 		inIpChan: make(chan []byte, BUF_SIZE),
 		inTtlChan: make(chan uint8, BUF_SIZE),
@@ -42,6 +43,7 @@ func NewDNSPoolNormal(srcIpStr string, ifaceName string, srcMac, dstMac []byte) 
 		srcMac: srcMac,
 		dstMac: dstMac,
 		finish: false,
+		randPfx: randPfx,
 	}
 	go dnsPool.send()
 	go dnsPool.recvIcmp()
@@ -132,9 +134,7 @@ func (p *DNSPoolNormal) send() {
 
 	// construct DNS Query
 	dnsQryBuf := new(bytes.Buffer)
-	randPfx := GetDomainRandPfx(RAND_LEN)
-	fmt.Println("\nrandPfxNormal: ", randPfx)
-	formatDomain := randPfx + ".00.00000000.1." + BASE_DOMAIN
+	formatDomain := p.randPfx + ".00.00000000.1." + BASE_DOMAIN
 	sections := strings.Split(formatDomain, ".")
 	for _, s := range sections {
 		binary.Write(dnsQryBuf, binary.BigEndian, byte(len(s)))  // length

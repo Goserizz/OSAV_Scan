@@ -30,17 +30,32 @@ func DNSRouteScan(
 	nSender, pps int,
 	srcMac, dstMac []byte,
 ) {
-	err := os.Remove(outFile)
+	file, err := os.Create(outFile)
 	if err != nil {
 		panic(err)
+	} else {
+		err := file.Close()
+		if err != nil {
+			return
+		}
 	}
-	err = os.Remove(natFile)
+	file, err = os.Create(natFile)
 	if err != nil {
 		panic(err)
+	} else {
+		err := file.Close()
+		if err != nil {
+			return
+		}
 	}
-	err = os.Remove(dnsFile)
+	file, err = os.Create(dnsFile)
 	if err != nil {
 		panic(err)
+	} else {
+		err := file.Close()
+		if err != nil {
+			return
+		}
 	}
 	dstIpStrArray := ReadLineAddr6FromFS(inFile)
 	bar := progressbar.Default(int64(len(dstIpStrArray)*int(endTtl-startTtl+1)), "Scanning...")
