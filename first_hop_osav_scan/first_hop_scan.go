@@ -128,3 +128,36 @@ func SpoofRangeScan(ifaceName, inputFile string, pps int, srcMac, dstMac []byte)
 	}
 	time.Sleep(10 * time.Second)
 }
+
+func CacheTest(srcIpStr, ifaceName, inputFile, outputFile string, srcMac, dstMac []byte) {
+	os.Remove(outputFile)
+	p := NewDNSPoolCache(srcIpStr, ifaceName, srcMac, dstMac)
+	time.Sleep(20 * time.Second)
+
+	dstIpStrArr := ReadLineAddr6FromFS(inputFile)
+	limiter := rate.NewLimiter(rate.Limit(5000), 100)
+
+	turn := 5
+	batch := 300000
+	bar := progressbar.Default(int64(len(dstIpStrArr)*turn), "Scanning Normal...")
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		fmt.Println("Error loading location:", err)
+		return
+	}
+
+	for k := 0; k < len(dstIpStrArr); k += batch {
+		for j := 0; j < turn; j++ {
+			for i := k; i < min(k+batch, len(dstIpStrArr)); i++ {
+				if (i+1)%100 == 0 {
+					bar.Add(100)
+				}
+				dstIpStr := dstIpStrArr[i]
+				dstIp := net.ParseIP(dstIpStr).To4()
+				p.Add(dstIp)
+				limiter.Wait(context.TODO())
+				Append1Addr6ToFS(outputFile, time.Now().In(location).Format("2006-01-02 15:04:05")+","+dstIpStr)
+			}
+		}
+	}
+}

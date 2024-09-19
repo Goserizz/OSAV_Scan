@@ -51,7 +51,11 @@ func main() {
 	}
 
 	if *outputFile != "" {
-		FirstHopScan(srcIpStr, *iface, *inputFile, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps, srcMac, dstMac)
+		if *dnsFile != "" {
+			FirstHopScan(srcIpStr, *iface, *inputFile, *outputFile, *dnsFile, uint8(*startTTL), uint8(*endTTL), *pps, srcMac, dstMac)
+		} else {
+			CacheTest(srcIpStr, *iface, *inputFile, *outputFile, srcMac, dstMac)
+		}
 	} else {
 		SpoofRangeScan(*iface, *inputFile, *pps, srcMac, dstMac)
 	}
