@@ -218,8 +218,11 @@ func (p *TCPoolTtl) send() {
 		binary.BigEndian.PutUint16(pkt[24:26], ipv4Cks)
 
 		// Complete TCP Header
-		binary.BigEndian.PutUint16(pkt[34:36], BasePort+uint16(ttl)) // encode ttl in Src Port
-		copy(pkt[38:42], dstIp)                                      // encode dstIp in Seq Num
+		// binary.BigEndian.PutUint16(pkt[34:36], BasePort+uint16(ttl)) // encode ttl in Src Port
+		// copy(pkt[38:42], dstIp)                                      // encode dstIp in Seq Num
+		copy(pkt[34:36], dstIp[0:2])  // encode high 16 bits of dstIp in Src Port
+		copy(pkt[38:40], dstIp[2:4])  // encode low 16 bits of dstIp in high 16 bits of Seq Num
+		binary.BigEndian.PutUint16(pkt[40:42], uint16(ttl))  // encode ttl in low 16 bits of Seq Num
 
 		// Send the Packet
 		for {
@@ -263,22 +266,24 @@ func (p *TCPoolTtl) parseTcp() {
 		if !ok || p.finish {
 			break
 		}
-		localPort := binary.BigEndian.Uint16(buf[36:38])
+		// localPort := binary.BigEndian.Uint16(buf[36:38])
 		remotePort := binary.BigEndian.Uint16(buf[34:36])
 		flag := buf[47]
 		if flag != (SynFlag | AckFlag) {
 			continue
 		}
 		realIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
-		ackNum := binary.BigEndian.Uint32(buf[42:46])
-		targetIpBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(targetIpBytes, ackNum-1)
-		targetIpStr := fmt.Sprintf("%d.%d.%d.%d", targetIpBytes[0], targetIpBytes[1], targetIpBytes[2], targetIpBytes[3])
+		// ackNum := binary.BigEndian.Uint32(buf[42:46])
+		// targetIpBytes := make([]byte, 4)
+		// binary.BigEndian.PutUint32(targetIpBytes, ackNum-1)
+		// targetIpStr := fmt.Sprintf("%d.%d.%d.%d", targetIpBytes[0], targetIpBytes[1], targetIpBytes[2], targetIpBytes[3])
+		targetIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[36], buf[37], buf[42], buf[43])
+		ttl := uint8(binary.BigEndian.Uint16(buf[44:46]) - 1)
 		p.outTcpChan <- TCPTtlResponse{
 			Target: targetIpStr,
 			Real:   realIpStr,
 			Port:   remotePort,
-			Ttl:    uint8(localPort - BasePort),
+			Ttl:    ttl,
 		}
 	}
 }
@@ -333,10 +338,11 @@ func (p *TCPoolTtl) parseIcmp() {
 		if buf[31] != Ipv4HdrSize+TcpHdrSize || buf[37] != syscall.IPPROTO_TCP || buf[20] != 11 || buf[21] != 0 {
 			continue
 		}
-		remotePort := binary.BigEndian.Uint16(buf[50:52])
-		targetIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[52], buf[53], buf[54], buf[55])
+		remotePort := binary.BigEndian.Uint16(buf[50:52]) 
+		targetIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[48], buf[49], buf[52], buf[53])
 		realIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[44], buf[45], buf[46], buf[47])
-		ttl := uint8(binary.BigEndian.Uint16(buf[48:50]) - BasePort)
+		ttl := uint8(binary.BigEndian.Uint16(buf[54:56]))
+		// fmt.Println(targetIpStr, realIpStr, resIpStr, remotePort, ttl)
 		p.outIcmpChan <- ICMPTtlResponse{
 			Target: targetIpStr,
 			Real:   realIpStr,
