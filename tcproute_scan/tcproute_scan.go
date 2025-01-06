@@ -244,7 +244,6 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 					p.Add(dstIp, nowTtl)
 				}
 			}
-			time.Sleep(2 * time.Second)
 			finish = true
 		}()
 
@@ -266,14 +265,10 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 			}
 		}()
 
-		for {
-			lenIn, _, _ := p.LenInChan()
-			if !finish || lenIn > 0 {
-				time.Sleep(time.Second)
-				continue
-			}
-			break
+		for !finish {
+			time.Sleep(time.Second)
 		}
+		time.Sleep(2 * time.Second)
 		p.Finish()
 
 		// re-traceroute
@@ -304,7 +299,6 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 					rePool.Add(net.ParseIP(dstIpStr).To4(), nowTtl)
 				}
 			}
-			time.Sleep(2 * time.Second)
 			finish = true
 		}()
 
@@ -323,14 +317,10 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 			}
 		}()
 
-		for {
-			lenIn, _, _ := rePool.LenInChan()
-			if !finish || lenIn > 0 {
-				time.Sleep(time.Second)
-				continue
-			}
-			break
+		for !finish {
+			time.Sleep(time.Second)
 		}
+		time.Sleep(2 * time.Second)
 		rePool.Finish()
 
 		ipDecStart = ipDec
@@ -400,11 +390,8 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 				panic(err)
 			}
 		}
-		finish = true
-		for tcpPool.LenInChan() > 0 {
-			time.Sleep(time.Second)
-		}
 		tcpPool.Finish()
+		finish = true
 
 		if fileNo > endFileNo {
 			break

@@ -235,58 +235,58 @@ func (p *TCPoolTtl) send() {
 	}
 }
 
-func (p *TCPoolTtl) recvTcp() {
-	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.ETH_P_IP)
-	if err != nil {
-		log.Fatalf("Socket error: %v\n", err)
-	}
-	defer func(fd int) {
-		err := syscall.Close(fd)
-		if err != nil {
-			panic(err)
-		}
-	}(fd)
+// func (p *TCPoolTtl) recvTcp() {
+// 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.ETH_P_IP)
+// 	if err != nil {
+// 		log.Fatalf("Socket error: %v\n", err)
+// 	}
+// 	defer func(fd int) {
+// 		err := syscall.Close(fd)
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 	}(fd)
 
-	for {
-		buf := make([]byte, 54)
-		_, _, err := syscall.Recvfrom(fd, buf, 0)
-		if p.finish {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		p.tcpParseChan <- buf
-	}
-}
+// 	for {
+// 		buf := make([]byte, 54)
+// 		_, _, err := syscall.Recvfrom(fd, buf, 0)
+// 		if p.finish {
+// 			break
+// 		}
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
+// 		p.tcpParseChan <- buf
+// 	}
+// }
 
-func (p *TCPoolTtl) parseTcp() {
-	for {
-		buf, ok := <-p.tcpParseChan
-		if !ok || p.finish {
-			break
-		}
-		// localPort := binary.BigEndian.Uint16(buf[36:38])
-		remotePort := binary.BigEndian.Uint16(buf[34:36])
-		flag := buf[47]
-		if flag != (SynFlag | AckFlag) {
-			continue
-		}
-		realIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
-		// ackNum := binary.BigEndian.Uint32(buf[42:46])
-		// targetIpBytes := make([]byte, 4)
-		// binary.BigEndian.PutUint32(targetIpBytes, ackNum-1)
-		// targetIpStr := fmt.Sprintf("%d.%d.%d.%d", targetIpBytes[0], targetIpBytes[1], targetIpBytes[2], targetIpBytes[3])
-		targetIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[36], buf[37], buf[42], buf[43])
-		ttl := uint8(binary.BigEndian.Uint16(buf[44:46]) - 1)
-		p.outTcpChan <- TCPTtlResponse{
-			Target: targetIpStr,
-			Real:   realIpStr,
-			Port:   remotePort,
-			Ttl:    ttl,
-		}
-	}
-}
+// func (p *TCPoolTtl) parseTcp() {
+// 	for {
+// 		buf, ok := <-p.tcpParseChan
+// 		if !ok || p.finish {
+// 			break
+// 		}
+// 		// localPort := binary.BigEndian.Uint16(buf[36:38])
+// 		remotePort := binary.BigEndian.Uint16(buf[34:36])
+// 		flag := buf[47]
+// 		if flag != (SynFlag | AckFlag) {
+// 			continue
+// 		}
+// 		realIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
+// 		// ackNum := binary.BigEndian.Uint32(buf[42:46])
+// 		// targetIpBytes := make([]byte, 4)
+// 		// binary.BigEndian.PutUint32(targetIpBytes, ackNum-1)
+// 		// targetIpStr := fmt.Sprintf("%d.%d.%d.%d", targetIpBytes[0], targetIpBytes[1], targetIpBytes[2], targetIpBytes[3])
+// 		targetIpStr := fmt.Sprintf("%d.%d.%d.%d", buf[36], buf[37], buf[42], buf[43])
+// 		ttl := uint8(binary.BigEndian.Uint16(buf[44:46]) - 1)
+// 		p.outTcpChan <- TCPTtlResponse{
+// 			Target: targetIpStr,
+// 			Real:   realIpStr,
+// 			Port:   remotePort,
+// 			Ttl:    ttl,
+// 		}
+// 	}
+// }
 
 func (p *TCPoolTtl) recvIcmp() {
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
@@ -354,13 +354,31 @@ func (p *TCPoolTtl) parseIcmp() {
 }
 
 func (p *TCPoolTtl) Finish() {
-	p.finish = true
+	for len(p.inIpChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.inIpChan)
+	for len(p.inTtlChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.inTtlChan)
+	for len(p.outTcpChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.outTcpChan)
+	for len(p.outIcmpChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.outIcmpChan)
+	for len(p.icmpParseChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.icmpParseChan)
+	for len(p.tcpParseChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.tcpParseChan)
+	p.finish = true
 }
 
 func (p *TCPoolTtl) IsFinish() bool {

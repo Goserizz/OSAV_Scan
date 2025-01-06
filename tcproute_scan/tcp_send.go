@@ -314,12 +314,27 @@ func (p *TCPoolv4) recvIcmp() {
 }
 
 func (p *TCPoolv4) Finish() {
-	p.finish = true
+	for len(p.inChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.inChan)
+	for len(p.outTcpTgtChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.outTcpTgtChan)
+	for len(p.outTcpRealChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.outTcpRealChan)
+	for len(p.outTcpPortChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.outTcpPortChan)
+	for len(p.outIcmpChan) > 0 {
+		time.Sleep(time.Second)
+	}
 	close(p.outIcmpChan)
+	p.finish = true
 }
 
 func (p *TCPoolv4) IsFinish() bool { return p.finish }
