@@ -266,8 +266,13 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 			}
 		}()
 
-		for !finish {
-			time.Sleep(time.Second)
+		for {
+			lenIn, _, _ := p.LenInChan()
+			if !finish || lenIn > 0 {
+				time.Sleep(time.Second)
+				continue
+			}
+			break
 		}
 		p.Finish()
 
@@ -318,8 +323,13 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 			}
 		}()
 
-		for !finish {
-			time.Sleep(time.Second)
+		for {
+			lenIn, _, _ := rePool.LenInChan()
+			if !finish || lenIn > 0 {
+				time.Sleep(time.Second)
+				continue
+			}
+			break
 		}
 		rePool.Finish()
 
@@ -391,6 +401,9 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 			}
 		}
 		finish = true
+		for tcpPool.LenInChan() > 0 {
+			time.Sleep(time.Second)
+		}
 		tcpPool.Finish()
 
 		if fileNo > endFileNo {
