@@ -10,11 +10,17 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"sync"
 )
 
 const (
 	BasePort = 50000
 )
+
+type IpTtlPair struct {
+	Ip []byte
+	Ttl uint8
+}
 
 type TCPTtlResponse struct {
 	Target string
@@ -32,8 +38,7 @@ type ICMPTtlResponse struct {
 }
 
 type TCPoolTtl struct {
-	inIpChan      chan []byte
-	inTtlChan     chan uint8
+	inChan        chan IpTtlPair
 	outTcpChan    chan TCPTtlResponse
 	outIcmpChan   chan ICMPTtlResponse
 	icmpParseChan chan []byte
@@ -46,6 +51,7 @@ type TCPoolTtl struct {
 	dstMac        []byte
 	finish        bool
 	blockSet      map[string]bool
+	wg            sync.WaitGroup
 }
 
 func NewTCPoolTtl(remotePort uint16, bufSize int, iface, srcIpStr string, srcMac []byte, dstMac []byte, blockFile string, nSend int) *TCPoolTtl {
@@ -73,8 +79,7 @@ func NewTCPoolTtl(remotePort uint16, bufSize int, iface, srcIpStr string, srcMac
 	}
 
 	p := &TCPoolTtl{
-		inIpChan:      make(chan []byte, bufSize),
-		inTtlChan:     make(chan uint8, bufSize),
+		inChan:        make(chan IpTtlPair, bufSize),
 		outTcpChan:    make(chan TCPTtlResponse, bufSize),
 		outIcmpChan:   make(chan ICMPTtlResponse, bufSize),
 		icmpParseChan: make(chan []byte, bufSize),
@@ -87,11 +92,14 @@ func NewTCPoolTtl(remotePort uint16, bufSize int, iface, srcIpStr string, srcMac
 		dstMac:        dstMac,
 		finish:        false,
 		blockSet:      blockSet,
+		wg:			   sync.WaitGroup{},
 	}
 	for i := 0; i < nSend; i++ {
+		p.wg.Add(2)
 		go p.send()
 		go p.parseIcmp()
 	}
+	p.wg.Add(1)
 	go p.recvIcmp()
 	return p
 }
@@ -100,12 +108,11 @@ func (p *TCPoolTtl) Add(dstIp []byte, ttl uint8) {
 	if p.finish {
 		return
 	}
-	p.inIpChan <- dstIp
-	p.inTtlChan <- ttl
+	p.inChan <- IpTtlPair{dstIp, ttl}
 }
 
 func (p *TCPoolTtl) LenInChan() (int, int, int) {
-	return len(p.inIpChan), len(p.icmpParseChan), len(p.outIcmpChan)
+	return len(p.inChan), len(p.icmpParseChan), len(p.outIcmpChan)
 }
 
 func (p *TCPoolTtl) GetIcmp() (string, string, string, uint16, uint8) {
@@ -141,6 +148,7 @@ func (p *TCPoolTtl) calCks(dstIp []byte, ttl uint8) uint16 {
 }
 
 func (p *TCPoolTtl) send() {
+	defer p.wg.Done()
 	// 创建原始套接字
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_IP)
 	if err != nil {
@@ -204,9 +212,14 @@ func (p *TCPoolTtl) send() {
 	var dstIp []byte
 	var ok bool
 	var ttl uint8
+	var ipTtlPair IpTtlPair
 	for {
-		dstIp = <-p.inIpChan
-		ttl, ok = <-p.inTtlChan
+		select {
+		case ipTtlPair, ok = <-p.inChan:
+			dstIp = ipTtlPair.Ip
+			ttl = ipTtlPair.Ttl
+		case <-time.After(time.Second):
+		}
 		if !ok || p.finish {
 			break
 		}
@@ -289,6 +302,7 @@ func (p *TCPoolTtl) send() {
 // }
 
 func (p *TCPoolTtl) recvIcmp() {
+	defer p.wg.Done()
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
 	if err != nil {
 		log.Fatalf("Socket error: %v\n", err)
@@ -310,22 +324,26 @@ func (p *TCPoolTtl) recvIcmp() {
 	for {
 		buf := make([]byte, 1500)
 		n, _, err := syscall.Recvfrom(fd, buf, 0)
-		if p.finish {
-			break
-		}
 		if n < 56 {
 			continue
 		}
 		if err != nil {
 			log.Fatalln(err)
 		}
+		if p.finish { break }
 		p.icmpParseChan <- buf
 	}
 }
 
 func (p *TCPoolTtl) parseIcmp() {
+	defer p.wg.Done()
 	for {
-		buf, ok := <-p.icmpParseChan
+		var buf []byte
+		ok := false
+		select {
+		case buf, ok = <-p.icmpParseChan:
+		case <-time.After(time.Second):
+		}
 		if !ok || p.finish {
 			break
 		}
@@ -354,31 +372,13 @@ func (p *TCPoolTtl) parseIcmp() {
 }
 
 func (p *TCPoolTtl) Finish() {
-	for len(p.inIpChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.inIpChan)
-	for len(p.inTtlChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.inTtlChan)
-	for len(p.outTcpChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.outTcpChan)
-	for len(p.outIcmpChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.outIcmpChan)
-	for len(p.icmpParseChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.icmpParseChan)
-	for len(p.tcpParseChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.tcpParseChan)
 	p.finish = true
+	p.wg.Wait()
+	close(p.inChan)
+	close(p.outTcpChan)
+	close(p.outIcmpChan)
+	close(p.icmpParseChan)
+	close(p.tcpParseChan)
 }
 
 func (p *TCPoolTtl) IsFinish() bool {

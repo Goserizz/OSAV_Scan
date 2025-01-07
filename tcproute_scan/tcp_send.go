@@ -6,6 +6,7 @@ import (
 	"net"
 	"syscall"
 	"time"
+	"sync"
 )
 
 const (
@@ -49,6 +50,7 @@ type TCPoolv4 struct {
 	dstMac         []byte
 	ttl            uint8
 	finish         bool
+	wg			   sync.WaitGroup
 }
 
 func NewTCPoolv4(remotePort uint16, bufSize int, localPort uint16, iface, srcIpStr string, srcMac []byte, dstMac []byte, ttl uint8) *TCPoolv4 {
@@ -88,7 +90,9 @@ func NewTCPoolv4(remotePort uint16, bufSize int, localPort uint16, iface, srcIpS
 		dstMac:         dstMac,
 		ttl:            ttl,
 		finish:         false,
+		wg:			    sync.WaitGroup{},
 	}
+	p.wg.Add(3)
 	go p.send()
 	go p.recvTcp()
 	go p.recvIcmp()
@@ -109,6 +113,7 @@ func (p *TCPoolv4) GetTcp() (string, string, uint16) {
 		return "", "", 0
 	}
 }
+
 func (p *TCPoolv4) GetIcmp() *ICMPResponse {
 	select {
 	case icmpRes, ok := <-p.outIcmpChan:
@@ -136,6 +141,7 @@ func (p *TCPoolv4) calCks(dstIp []byte) (uint16, uint16) {
 }
 
 func (p *TCPoolv4) send() {
+	defer p.wg.Done()
 	// 创建原始套接字
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_IP)
 	if err != nil {
@@ -196,8 +202,13 @@ func (p *TCPoolv4) send() {
 	pkt := append(macHdr, ipv4Hdr...)
 	pkt = append(pkt, tcpHdr...)
 
+	var dstIp []byte
+	var ok bool
 	for {
-		dstIp, ok := <-p.inChan
+		select {
+		case dstIp, ok = <-p.inChan:
+		case <-time.After(time.Second):
+		}
 		if !ok || p.finish {
 			break
 		}
@@ -229,6 +240,7 @@ func (p *TCPoolv4) send() {
 }
 
 func (p *TCPoolv4) recvTcp() {
+	defer p.wg.Done()
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_IP)))
 	if err != nil {
 		log.Fatal(err)
@@ -269,6 +281,7 @@ func (p *TCPoolv4) recvTcp() {
 }
 
 func (p *TCPoolv4) recvIcmp() {
+	defer p.wg.Done()
 	// 创建原始套接字
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
 	if err != nil {
@@ -314,27 +327,13 @@ func (p *TCPoolv4) recvIcmp() {
 }
 
 func (p *TCPoolv4) Finish() {
-	for len(p.inChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.inChan)
-	for len(p.outTcpTgtChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.outTcpTgtChan)
-	for len(p.outTcpRealChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.outTcpRealChan)
-	for len(p.outTcpPortChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.outTcpPortChan)
-	for len(p.outIcmpChan) > 0 {
-		time.Sleep(time.Second)
-	}
-	close(p.outIcmpChan)
 	p.finish = true
+	p.wg.Wait()
+	close(p.inChan)
+	close(p.outTcpTgtChan)
+	close(p.outTcpRealChan)
+	close(p.outTcpPortChan)
+	close(p.outIcmpChan)
 }
 
 func (p *TCPoolv4) IsFinish() bool { return p.finish }

@@ -318,9 +318,9 @@ func TCPRouteScanWithForwarder(srcIpStr, iface, outDir, blockFile string, startT
 		}()
 
 		for !finish {
-			time.Sleep(time.Second)
+			time.Sleep(time.Second)  // Wait for sending over
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(2 * time.Second)  // Wait for final responses
 		rePool.Finish()
 
 		ipDecStart = ipDec
